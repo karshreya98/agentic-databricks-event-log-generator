@@ -1,97 +1,116 @@
 # Process Mining on Databricks: From Event Logs to Operational Intelligence
 
-*A few months ago, a customer asked me: "Can I do process mining on Databricks?" That question led to an open-source toolkit that uses AI agents to automate the hardest part of process mining — building the event log.*
+*A few months ago, a customer asked me: "Can I do process mining on Databricks?" The answer changed how I think about where the value lives — not in the algorithms, but in the data platform underneath them.*
 
 ---
 
-## The Question
+## The Starting Point: Your Data Is Already Here
 
-Process mining reconstructs the *actual* processes your organization runs by analyzing event log data from operational systems. It reveals bottlenecks, rework loops, and deviations that dashboards miss.
+This is the insight that matters most. If you're running Databricks, your operational data — SAP transactions, Salesforce opportunities, ServiceNow tickets, ERP purchase orders — is already landing in the lakehouse. It's being ingested for BI, compliance, analytics, ML. It's governed in Unity Catalog with lineage, access controls, and semantic metadata.
 
-If you're running Databricks, your operational data is likely already in the lakehouse. SAP transactions, Salesforce activities, ServiceNow tickets — ingested for BI, compliance, and analytics. Process mining needs the same data, just shaped differently. It doesn't require a new pipeline. It requires a new lens.
+Process mining needs exactly this data. Not a copy of it in another tool. Not a separate extraction pipeline. The same tables, governed the same way, enriched with the same operational context that already lives alongside them.
 
-But every process mining project hits the same bottleneck: **building a clean, enriched event log from raw operational tables**. Which tables contain events? What's the case ID? How do you handle snapshot tables that aren't event histories? Where's the reference data to enrich with? This takes days to weeks of manual data engineering.
-
----
-
-## Start with the Partnership: Celonis + Databricks
-
-The most mature production path is the [Celonis-Databricks partnership](https://www.celonis.com/news/press/celonis-partners-with-databricks-to-power-enterprise-ai-that-continuously-improves-business-operations). Celonis connects to your lakehouse via **Delta Sharing** — zero-copy, governed, no ETL.
-
-Celonis brings pre-built connectors for SAP, purpose-built visualization, native AI, and action flows. If your organization uses Celonis, the Databricks integration is production-grade.
-
-To set up Delta Sharing with Celonis, see [Celonis Data Integration: Databricks](https://docs.celonis.com/en/databricks.html). Signavio and UiPath Process Mining also support Delta Sharing — check their respective documentation for connector setup:
-- [SAP Signavio: External Data Integration](https://help.sap.com/docs/signavio)
-- [UiPath Process Mining: Data Connectors](https://docs.uipath.com/process-mining)
+The question was never "can Databricks do process mining." It was "why would you build the event log anywhere else when the data, the governance, and the context are already here?"
 
 ---
 
-## Where the Lakehouse Adds Value
+## Process Mining Tools Are Great — And They Agree
 
-Process mining tools are excellent at analysis. What the lakehouse adds is **context they don't have access to**.
+Celonis, Signavio, UiPath Process Mining — they're excellent at what they do: process discovery, conformance checking, visualization, action recommendations, and increasingly their own AI capabilities. They've invested years in these features and they do them well.
 
-**The data is already here.** Most Databricks customers already ingest their ERP/CRM/ITSM data. Building an event log is a transformation on existing data, not a new pipeline.
+Celonis has a [strategic partnership with Databricks](https://www.celonis.com/news/press/celonis-partners-with-databricks-to-power-enterprise-ai-that-continuously-improves-business-operations) built on Delta Sharing. Signavio and UiPath support similar integrations. These tools *want* to read from a governed data platform rather than maintain their own extraction pipelines. The industry is converging on the idea that the data platform is the foundation and the process mining tool is the analytical layer on top.
 
-**Enrichment beyond the event log.** A PO stuck at approval might have nothing to do with the process — maybe the supplier's credit rating changed. That signal lives in the lakehouse alongside the event log, not inside the process mining tool.
-
-**The event log as a governed data product.** When Celonis builds an event log, it lives in Celonis. Here, the event log is a Unity Catalog table — governed, discoverable, consumable by any tool: Celonis via Delta Sharing, pm4py for exploration, ML models for prediction.
+The partnership model works because both sides do what they're best at:
+- **Databricks** → data engineering, governance, enrichment, serving
+- **Process mining tools** → discovery, conformance, visualization, action
 
 ---
 
-## Automating Event Log Discovery with AI Agents
+## What the Lakehouse Uniquely Brings
 
-The [companion toolkit](https://github.com/karshreya98/agentic-databricks-event-log-generator) uses an agentic skill to automate event log creation. The skill teaches an AI agent process mining domain knowledge — table classification, event mapping, snapshot handling, enrichment patterns. The agent uses its built-in capabilities to execute.
+### Unity Catalog as the Semantic Layer
+
+This is underappreciated. Unity Catalog doesn't just store tables — it stores *knowledge about* tables. Column descriptions, table comments, data types, tags (PII, business-critical), lineage from source to consumption, access controls.
+
+When an AI agent profiles your catalog to build an event log, it reads all of this. A column tagged `business_key=true` is probably a case ID. A table with a comment saying "supplier master data" is enrichment material, not an event source. A column with 6 unique values named `stagename` with a progression from "Discovery" to "Closed Won" is a process stage.
+
+This semantic layer means the agent understands your data *before it reads a single row*. No process mining tool has access to this depth of metadata about your source systems.
+
+### Enrichment: The Story Beyond the Event Log
+
+Every process mining tool — Celonis included — has AI and ML capabilities that operate on event log features: activity sequences, timestamps, case durations, resources. These are valuable.
+
+But the *why* behind a bottleneck usually lives outside the event log:
+- A purchase order stuck at approval → the supplier's credit rating changed last week (supplier master data)
+- Cases with contract amendments take 3x longer → the contract terms changed mid-process (contract data)
+- SLA breaches cluster in Q4 → warehouse capacity was at 98% (inventory data)
+- Invoice rejections spike for one vendor → three-way match failures correlate with a specific product category (quality data)
+
+These signals sit in the lakehouse *alongside* the event log. The event log is the process backbone; the rest of the catalog is the operational context. Together, they tell a story that no single tool sees on its own.
+
+Our toolkit enriches the event log at build time — joining supplier risk ratings, contract terms, cost center data, customer segments — so that whether Celonis reads it via Delta Sharing or you explore it with pm4py, the context is already there.
+
+### The Event Log as a Governed Data Product
+
+When a process mining tool builds an event log internally, it lives inside that tool. The BI team can't query it. The ML team can't train on it. The compliance team can't audit it. It's a tool artifact, not a data product.
+
+When the event log is a Unity Catalog table:
+- It has lineage (you can trace from the event log back to the raw SAP table it came from)
+- It has governance (the same access controls as everything else in your catalog)
+- It has discoverability (anyone can find it, understand its schema, see its description)
+- It has multiple consumers (Celonis via Delta Sharing, pm4py app, AI/BI dashboards, ML models — all from the same table)
+
+One event log, many consumers, one governance model.
+
+---
+
+## Automating the Hard Part with AI Agents
+
+Building the event log is the bottleneck. Which tables contain events? What's the case ID? How do you handle snapshot tables? Where's the enrichment data? This takes weeks of manual data engineering on every project.
+
+We built an [open-source toolkit](https://github.com/karshreya98/agentic-databricks-event-log-generator) that automates this with an agentic AI skill. The skill teaches an agent process mining domain knowledge — table classification, event mapping, enrichment patterns, quality validation. The agent uses its built-in capabilities to scan your catalog and execute.
 
 It runs on two runtimes:
+- **Claude Code** — uses Databricks MCP tools for UC metadata and SQL execution
+- **Genie Code** — runs inside the workspace with native UC access, no external dependencies
 
-**Claude Code** — best reasoning quality. The agent uses Databricks MCP tools (`get_table_details`, `execute_sql`) to profile tables, test mappings, and build the event log.
-
-**Genie Code** — runs inside the Databricks workspace with native UC access. No external dependencies or subscriptions needed.
-
-Same skill, same logic, same output. One SKILL.md file works in both.
+Same skill, same output, your choice of runtime.
 
 ### What the agent does
 
 ```
-Phase 1 — DISCOVER    Profiles tables. Classifies as event source,
+Phase 1 — DISCOVER    Profiles tables using UC metadata (schemas, stats,
+                       descriptions, tags). Classifies as event source,
                        reference data, aggregate, or existing event log.
 
 Phase 2 — MAP & TEST  Identifies case ID. Maps timestamps to activities.
-                       Tests every extraction with real SQL.
-                       Handles snapshot tables (derives intermediate stages).
+                       Tests every extraction with real SQL. Handles
+                       snapshot tables by deriving intermediate stages.
 
 Phase 3 — BUILD       Combines extractions + enrichment joins.
-                       Validates quality gates (no nulls, >2 activities,
-                       >1 event per case). Self-corrects if gates fail.
-                       Supports traditional and OCEL 2.0 output.
+                       Validates quality gates. Self-corrects on failure.
+                       Outputs traditional (single case_id) or OCEL 2.0
+                       (multi-object) format.
 
-Phase 4 — REPORT      Saves to Unity Catalog. Reports table, event,
-                       case, and enrichment statistics.
+Phase 4 — REPORT      Saves enriched event log to Unity Catalog.
+                       Columns follow the Celonis taxonomy: mandatory three
+                       (case_id, activity, timestamp) + activity-level
+                       attributes (resource, department, cost) + case-level
+                       enrichments (supplier, contract, region).
 ```
 
-### What it handles
+### Traditional vs Object-Centric (OCEL)
 
-| Data shape | What happens |
-|---|---|
-| Multi-table ERP (POs, invoices, GRs, payments) | Discovers mappings, builds event log, enriches |
-| Snapshot table (one row per entity with stage column) | Derives intermediate stages proportionally |
-| Existing event log | Skips building, validates + enriches |
-| Many-to-many relationships | Generates OCEL 2.0 output (events + objects + E2O) |
-| Not process data (IoT, time series) | Rejects with explanation |
-| Noisy data (duplicates, nulls, orphans) | Quality gates catch and report issues |
+Traditional process mining forces a single case ID per event. Real processes have many-to-many relationships: one PO → multiple invoices, one invoice → multiple POs.
 
-### Traditional vs OCEL output
-
-Traditional process mining forces a single `case_id` per event. But real processes have many-to-many relationships: one PO can have multiple invoices, one invoice can cover multiple POs.
-
-**OCEL 2.0** (Object-Centric Event Log) preserves all relationships:
+OCEL 2.0 preserves all object relationships:
 
 ```
-Traditional:  "Create PO" → case_id = PO-001 (one perspective)
+Traditional:  "Create PO" belongs to case_id = PO-001
 
-OCEL:         "Create PO" → PurchaseOrder: PO-001
-                           → Supplier: SUP-042
-                           → Contract: CTR-010  (three perspectives)
+OCEL:         "Create PO" links to PurchaseOrder: PO-001
+                                    Supplier: SUP-042
+                                    Contract: CTR-010
 ```
 
 The toolkit generates both formats. Celonis and pm4py both support OCEL.
@@ -100,9 +119,9 @@ The toolkit generates both formats. Celonis and pm4py both support OCEL.
 
 ## Consuming the Event Log
 
-### Celonis / Signavio / UiPath (Delta Sharing)
+### Enterprise Tools (Delta Sharing)
 
-The event log is a Unity Catalog table. Share it to external process mining tools via Delta Sharing:
+The event log is a governed UC table. Share it to Celonis, Signavio, or UiPath via Delta Sharing — zero-copy, always current:
 
 ```sql
 CREATE SHARE process_mining_share;
@@ -110,26 +129,15 @@ ALTER SHARE process_mining_share ADD TABLE my_catalog.silver.event_log;
 GRANT SELECT ON SHARE process_mining_share TO RECIPIENT celonis_recipient;
 ```
 
-The recipient configures the Delta Sharing connection on their side. Data stays in the lakehouse — zero-copy, always current, governed.
-
-**Setup guides:**
+The recipient configures the connection on their side:
 - [Databricks: Create and manage shares](https://docs.databricks.com/en/delta-sharing/create-share.html)
-- [Celonis: Connect to Databricks via Delta Sharing](https://docs.celonis.com/en/databricks.html)
+- [Celonis: Connect to Databricks](https://docs.celonis.com/en/databricks.html)
 - [SAP Signavio: External data sources](https://help.sap.com/docs/signavio)
 - [UiPath Process Mining: Databricks connector](https://docs.uipath.com/process-mining)
 
-### pm4py Databricks App (for teams without Celonis)
+### Exploration (pm4py Databricks App)
 
-The repo includes an interactive Databricks App built with Dash + pm4py + Plotly. It auto-discovers all event log tables in the configured catalog and supports both traditional and OCEL formats.
-
-```bash
-cd app
-databricks apps create process-mining-dashboard --app-source .
-```
-
-Shows process maps (DFG), variant analysis, bottleneck transitions, conformance checking. For OCEL tables, it additionally shows object type breakdown and links-per-event distribution.
-
-This is a tool for exploration and proof-of-concept — often enough to answer: "Is process mining worth investing in for our data?"
+For teams exploring process mining without Celonis, the toolkit includes a Databricks App with interactive process maps, variant analysis, bottleneck detection, and conformance checking. It auto-discovers all event log tables in the catalog and supports both traditional and OCEL formats.
 
 ---
 
@@ -137,10 +145,10 @@ This is a tool for exploration and proof-of-concept — often enough to answer: 
 
 **"Can I do process mining on Databricks?"**
 
-**Yes, with Celonis.** Delta Sharing is the production path. The event log lives in Unity Catalog; Celonis reads it zero-copy.
+Yes. And the bigger question is: why would you build the event log anywhere else?
 
-**Yes, with pm4py.** For exploration and POC, the Databricks App provides interactive process mining without additional tooling.
+Your operational data is already in the lakehouse. Unity Catalog already has the semantic metadata to understand it. The enrichment data — supplier ratings, contract terms, customer segments — already sits alongside the event log. The governance model already covers it.
 
-**Yes, and you can automate the hard part.** The agentic skill scans your catalog, reasons about your tables, builds an enriched event log, and saves it as a governed data product — in minutes, not weeks.
+Process mining tools are great at analysis. The lakehouse is great at being the governed, enriched, central data platform they read from. This toolkit automates the bridge between the two — turning raw operational tables into a governed event log that any tool can consume.
 
 The toolkit is open source: [github.com/karshreya98/agentic-databricks-event-log-generator](https://github.com/karshreya98/agentic-databricks-event-log-generator).
