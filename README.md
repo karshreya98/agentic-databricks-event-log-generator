@@ -106,6 +106,18 @@ Interactive process maps, variant analysis, bottleneck transitions, conformance 
 
 ---
 
+## Examples
+
+The `examples/` folder has a complete walkthrough:
+
+1. **`01_create_source_tables.py`** — Databricks notebook that generates realistic ERP tables (purchase orders, goods receipts, invoices, payments) + reference data (suppliers, contracts). Run this first to have something to discover.
+
+2. **`02_run_discovery_claude_code.md`** — Step-by-step guide for running the skill with Claude Code, including what to expect at each phase.
+
+3. **`03_run_discovery_genie_code.md`** — Same guide for Genie Code.
+
+---
+
 ## Repo Structure
 
 ```
@@ -117,6 +129,11 @@ agentic-databricks-event-log-generator/
 │
 ├── genie-code/discover-event-log/      # Genie Code skill (same logic)
 │   └── SKILL.md
+│
+├── examples/                           # End-to-end walkthrough
+│   ├── 01_create_source_tables.py      #   Generate synthetic ERP data
+│   ├── 02_run_discovery_claude_code.md #   Claude Code guide
+│   └── 03_run_discovery_genie_code.md  #   Genie Code guide
 │
 ├── eventlog/                           # Python package (pip-installable)
 │   ├── builder.py                      #   YAML config → Spark → event log
@@ -131,8 +148,8 @@ agentic-databricks-event-log-generator/
 │
 ├── consumers/pm4py-app/                # Databricks App (Dash + pm4py)
 │
-├── setup.sh                            # Claude Code setup (one command)
-├── install-genie-code.sh               # Genie Code install (one command)
+├── setup.sh                            # Claude Code setup
+├── install-genie-code.sh               # Genie Code install
 ├── setup.py                            # pip install for eventlog package
 ├── CLAUDE.md
 ├── blog.md
