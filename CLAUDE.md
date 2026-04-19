@@ -1,22 +1,19 @@
 # Agentic Event Log Generator for Databricks
 
-## What This Repo Is
-
-Toolkit for discovering, building, and enriching process mining event logs on Databricks. Uses agentic skills (Claude Code or Genie Code) to scan catalogs, reason about table structure, and produce governed event logs.
-
 ## Skills
 
-- `/discover-event-log` — Agentic event log discovery. Scans catalog, classifies tables, maps events, tests with SQL, enriches, validates quality.
+- `/discover-event-log` — Agentic event log discovery. Auto-detected via `.claude/skills/` symlink → `skills/discover-event-log/`.
 
-## Key Components
+## Repo Layout
 
-- `.claude/skills/discover-event-log/` — Claude Code skill (auto-detected in this directory)
-- `genie-code/discover-event-log/` — Same skill for Genie Code
+- `skills/` — Canonical skill definition (shared by Claude Code + Genie Code)
 - `eventlog/` — Python package: EventLogBuilder, EventLogEnricher, EventLogValidator
 - `templates/` — YAML configs for P2P, O2C, incident management
-- `consumers/pm4py-app/` — Interactive process mining Databricks App
+- `app/` — pm4py Databricks App
+- `examples/` — Synthetic data + step-by-step guides
+- `scripts/` — Setup and install scripts
 
-## Databricks MCP Tools Used
+## Databricks MCP Tools Used by the Skill
 
 - `get_table_details` — profiles tables (schema + samples + stats in one call)
 - `execute_sql` — tests mappings, validates quality, builds tables

@@ -25,54 +25,37 @@ Agent:
                          17,734 events | 3,019 cases | 7 activities | 19 columns
 ```
 
-The skill teaches the agent **process mining domain knowledge** — table classification, event mapping, snapshot handling, enrichment patterns. The agent uses its built-in capabilities for the actual profiling and SQL execution.
+The skill teaches the agent **process mining domain knowledge**. The agent uses its built-in capabilities for profiling and SQL execution.
 
-## Two Ways to Run
+---
+
+## Getting Started
 
 ### Claude Code
 
-Best quality. Requires Anthropic subscription + Databricks AI Dev Kit.
-
-**Setup:**
 ```bash
 git clone https://github.com/karshreya98/agentic-databricks-event-log-generator.git
 cd agentic-databricks-event-log-generator
-./setup.sh    # checks/installs Claude Code, Databricks CLI, AI Dev Kit
+./scripts/setup-claude-code.sh    # installs Claude Code + Databricks CLI + AI Dev Kit
+claude                             # start Claude Code
+/discover-event-log                # invoke the skill
 ```
 
-**Run:**
-```bash
-claude                        # start Claude Code from repo directory
-/discover-event-log           # invoke the skill
-```
 > "Build an event log from my_catalog.my_schema — it's a procure-to-pay process"
-
-The skill lives in `.claude/skills/discover-event-log/SKILL.md` and is auto-detected when Claude Code runs in this directory.
 
 ### Genie Code
 
-No external dependencies. Runs inside Databricks on FMAPI.
-
-**Setup:**
 ```bash
 git clone https://github.com/karshreya98/agentic-databricks-event-log-generator.git
 cd agentic-databricks-event-log-generator
-./install-genie-code.sh                        # copies skill to your workspace
-# or with a specific profile:
-./install-genie-code.sh --profile my-workspace
+./scripts/install-genie-code.sh    # copies skill to your workspace
 ```
 
-**Run:**
-
-Open Genie Code in your workspace (Agent mode):
+Open Genie Code (Agent mode):
 
 > @discover-event-log Build an event log from my_catalog.my_schema — it's a sales pipeline process
 
-Same skill logic, same output. Genie Code has native UC metadata access — no MCP tools needed.
-
-### Without AI (YAML templates)
-
-For users who already know their table mappings:
+### Without AI
 
 ```python
 %pip install /Workspace/Users/<you>/agentic-databricks-event-log-generator/
@@ -82,39 +65,33 @@ builder = EventLogBuilder(spark, "templates/procure_to_pay.yaml")
 builder.save()
 ```
 
-Edit `templates/procure_to_pay.yaml` to match your tables. See `.claude/skills/discover-event-log/references/yaml-schema.md` for the config format.
+---
+
+## Examples
+
+End-to-end walkthrough in `examples/`:
+
+| File | What it does |
+|------|-------------|
+| `01_create_source_tables.py` | Databricks notebook — generates realistic ERP tables to discover |
+| `02_run_discovery_claude_code.md` | Step-by-step guide for Claude Code |
+| `03_run_discovery_genie_code.md` | Step-by-step guide for Genie Code |
 
 ---
 
 ## Consuming the Event Log
 
-Once built, the event log is a governed Unity Catalog table. Consume it with:
-
 **Celonis / Signavio (Delta Sharing):**
 ```sql
-CREATE SHARE IF NOT EXISTS process_mining_share;
+CREATE SHARE process_mining_share;
 ALTER SHARE process_mining_share ADD TABLE process_mining.silver.event_log;
--- Grant to recipient, they connect via Delta Sharing protocol
 ```
 
 **pm4py Databricks App:**
 ```bash
-cd consumers/pm4py-app
+cd app
 databricks apps create process-mining-dashboard --app-source .
 ```
-Interactive process maps, variant analysis, bottleneck transitions, conformance checking.
-
----
-
-## Examples
-
-The `examples/` folder has a complete walkthrough:
-
-1. **`01_create_source_tables.py`** — Databricks notebook that generates realistic ERP tables (purchase orders, goods receipts, invoices, payments) + reference data (suppliers, contracts). Run this first to have something to discover.
-
-2. **`02_run_discovery_claude_code.md`** — Step-by-step guide for running the skill with Claude Code, including what to expect at each phase.
-
-3. **`03_run_discovery_genie_code.md`** — Same guide for Genie Code.
 
 ---
 
@@ -123,17 +100,21 @@ The `examples/` folder has a complete walkthrough:
 ```
 agentic-databricks-event-log-generator/
 │
-├── .claude/skills/discover-event-log/  # Claude Code skill
-│   ├── SKILL.md                        #   Agentic workflow (4 phases)
-│   └── references/                     #   YAML schema + process patterns
+├── skills/                             # Agentic skill (single source of truth)
+│   └── discover-event-log/
+│       ├── SKILL.md                    #   4-phase workflow
+│       └── references/                 #   YAML schema + process patterns
 │
-├── genie-code/discover-event-log/      # Genie Code skill (same logic)
-│   └── SKILL.md
+├── .claude/skills/                     # Claude Code auto-detection (symlink → skills/)
 │
-├── examples/                           # End-to-end walkthrough
-│   ├── 01_create_source_tables.py      #   Generate synthetic ERP data
-│   ├── 02_run_discovery_claude_code.md #   Claude Code guide
-│   └── 03_run_discovery_genie_code.md  #   Genie Code guide
+├── scripts/
+│   ├── setup-claude-code.sh            #   Install Claude Code + AI Dev Kit
+│   └── install-genie-code.sh           #   Copy skill to Databricks workspace
+│
+├── app/                                # pm4py Databricks App
+│   ├── app.py
+│   ├── app.yaml
+│   └── requirements.txt
 │
 ├── eventlog/                           # Python package (pip-installable)
 │   ├── builder.py                      #   YAML config → Spark → event log
@@ -146,11 +127,12 @@ agentic-databricks-event-log-generator/
 │   ├── order_to_cash.yaml
 │   └── incident_management.yaml
 │
-├── consumers/pm4py-app/                # Databricks App (Dash + pm4py)
+├── examples/                           # End-to-end walkthrough
+│   ├── 01_create_source_tables.py
+│   ├── 02_run_discovery_claude_code.md
+│   └── 03_run_discovery_genie_code.md
 │
-├── setup.sh                            # Claude Code setup
-├── install-genie-code.sh               # Genie Code install
-├── setup.py                            # pip install for eventlog package
+├── setup.py
 ├── CLAUDE.md
 ├── blog.md
 └── README.md
@@ -160,21 +142,20 @@ agentic-databricks-event-log-generator/
 
 | Dataset | Type | Result |
 |---|---|---|
-| `dbdemos.sales_pipeline` | CRM snapshot (Salesforce-style) | 17,734 events, 3,019 cases, 7 activities, enriched with accounts + reps |
-| `process_mining.erp_raw` | Multi-table ERP (SAP-style) | 27,647 events, 5,000 cases, 6 activities, enriched with suppliers + contracts |
-| `dbdemos.lakehouse_iot` | IoT sensor data | Correctly identified as NOT suitable for process mining |
+| `dbdemos.sales_pipeline` | CRM snapshot | 17,734 events, 3,019 cases, 7 activities |
+| `process_mining.erp_raw` | Multi-table ERP | 27,647 events, 5,000 cases, 6 activities |
+| `dbdemos.lakehouse_iot` | IoT sensor data | Correctly rejected — not process data |
 
-Both Claude Code and Genie Code produced **identical results** on the same dataset.
+Claude Code and Genie Code produced **identical results** on the same dataset.
 
 ## Troubleshooting
 
 | Problem | Solution |
 |---------|----------|
 | `/discover-event-log` not recognized | Run Claude Code from the repo directory |
-| MCP tool errors | Run `./setup.sh` to install AI Dev Kit |
-| Auth errors | `databricks auth login`, set `[DEFAULT]` in `~/.databrickscfg` |
-| Genie Code doesn't see skill | Run `./install-genie-code.sh`, refresh Genie Code |
-| pm4py app empty | Grant app service principal `SELECT` on event log table |
+| MCP tool errors | Run `./scripts/setup-claude-code.sh` |
+| Genie Code doesn't see skill | Run `./scripts/install-genie-code.sh`, refresh |
+| pm4py app empty | Grant app service principal `SELECT` on the table |
 
 ## License
 

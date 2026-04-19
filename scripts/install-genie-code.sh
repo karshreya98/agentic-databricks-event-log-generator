@@ -25,7 +25,7 @@ fi
 
 SKILL_PATH="/Workspace/Users/${USER}/.assistant/skills/discover-event-log"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-SKILL_SOURCE="${SCRIPT_DIR}/genie-code/discover-event-log"
+SKILL_SOURCE="${SCRIPT_DIR}/../skills/discover-event-log"
 
 echo "Installing discover-event-log skill for Genie Code..."
 echo "  User:   ${USER}"
