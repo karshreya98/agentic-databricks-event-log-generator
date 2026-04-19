@@ -1,10 +1,11 @@
 """
 Process Mining Dashboard — Databricks App
 
-Interactive process mining dashboard built with Dash + pm4py.
-Reads refined event log data from Unity Catalog via SQL warehouse.
+Interactive dashboard that visualizes discovered process event logs.
+Supports both traditional (single case_id) and OCEL (multi-object) formats.
 
-Visualization uses Plotly (no graphviz system dependency required).
+Reads from Unity Catalog via SQL warehouse.
+Visualization uses Plotly (no graphviz dependency).
 """
 
 import os
@@ -14,30 +15,25 @@ import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
 import plotly.express as px
 import pandas as pd
-import numpy as np
 import pm4py
 from pm4py.statistics.traces.generic.pandas import case_statistics
 from databricks.sdk import WorkspaceClient
-from databricks.sdk.service.sql import StatementState, StatementParameterListItem
+from databricks.sdk.service.sql import StatementState
 
-# ── Config ──
 WAREHOUSE_ID = os.environ.get("DATABRICKS_WAREHOUSE_ID", "")
-EVENT_LOG_TABLE = os.environ.get("EVENT_LOG_TABLE", "process_mining.silver.event_log")
+CATALOG = os.environ.get("CATALOG", "process_mining")
+SCHEMA = os.environ.get("SCHEMA", "silver")
 
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.FLATLY])
 app.title = "Process Mining Dashboard"
-
 w = WorkspaceClient()
 
 
 # ── Data Access ──
 
-def query_lakehouse(sql: str, parameters: list[dict] | None = None) -> pd.DataFrame:
-    """Execute a parameterized SQL query and return a DataFrame."""
+def query(sql: str) -> pd.DataFrame:
     response = w.statement_execution.execute_statement(
-        warehouse_id=WAREHOUSE_ID,
-        statement=sql,
-        parameters=parameters,
+        warehouse_id=WAREHOUSE_ID, statement=sql,
     )
     if response.status.state != StatementState.SUCCEEDED:
         raise Exception(f"Query failed: {response.status.error}")
@@ -46,118 +42,114 @@ def query_lakehouse(sql: str, parameters: list[dict] | None = None) -> pd.DataFr
     return pd.DataFrame(rows, columns=columns)
 
 
-# Detect which filter column exists in the table
-FILTER_COL = os.environ.get("FILTER_COLUMN", "")
+def discover_tables() -> list[dict]:
+    """Find event log tables and OCEL tables in the catalog."""
+    sql = f"""
+        SELECT table_name FROM system.information_schema.tables
+        WHERE table_catalog = '{CATALOG}' AND table_schema = '{SCHEMA}'
+        ORDER BY table_name
+    """
+    df = query(sql)
+    tables = []
+    for name in df["table_name"].tolist():
+        full = f"{CATALOG}.{SCHEMA}.{name}"
+        if "ocel_e2o" in name or "ocel_objects" in name:
+            continue  # skip OCEL support tables
+        if "ocel_events" in name:
+            tables.append({"label": f"{name} (OCEL)", "value": full, "type": "ocel"})
+        else:
+            # Check if it has case_id + activity + event_timestamp
+            try:
+                cols_df = query(f"DESCRIBE TABLE {full}")
+                cols = cols_df["col_name"].tolist()
+                if "case_id" in cols and "activity" in cols and "event_timestamp" in cols:
+                    tables.append({"label": name, "value": full, "type": "traditional"})
+            except Exception:
+                pass
+    return tables
 
 
-def _detect_filter_column() -> str:
-    """Auto-detect the best filter column from the table schema."""
-    global FILTER_COL
-    if FILTER_COL:
-        return FILTER_COL
-    sql = f"DESCRIBE TABLE {EVENT_LOG_TABLE}"
-    schema_df = query_lakehouse(sql)
-    cols = schema_df["col_name"].tolist()
-    # Try common filter columns in order of preference
-    for candidate in ["department", "account_industry", "region", "source_system", "account_region"]:
-        if candidate in cols:
-            FILTER_COL = candidate
-            return FILTER_COL
-    FILTER_COL = ""
-    return FILTER_COL
+def load_event_log(table: str) -> pd.DataFrame:
+    sql = f"""
+        SELECT case_id, activity, event_timestamp,
+               resource, cost, time_since_prev_seconds, event_rank
+        FROM {table}
+        ORDER BY case_id, event_timestamp
+    """
+    try:
+        df = query(sql)
+    except Exception:
+        # OCEL events table may not have all columns
+        sql = f"SELECT * FROM {table} ORDER BY event_timestamp"
+        df = query(sql)
 
-
-def load_event_log(filter_value: str | None = None) -> pd.DataFrame:
-    """Load refined event log, optionally filtered."""
-    filter_col = _detect_filter_column()
-
-    if filter_value and filter_col:
-        safe_val = filter_value.replace("'", "''")
-        sql = f"""
-            SELECT case_id, activity, event_timestamp,
-                   resource, cost, time_since_prev_seconds, event_rank
-            FROM {EVENT_LOG_TABLE}
-            WHERE {filter_col} = '{safe_val}'
-            ORDER BY case_id, event_timestamp
-        """
-    else:
-        sql = f"""
-            SELECT case_id, activity, event_timestamp,
-                   resource, cost, time_since_prev_seconds, event_rank
-            FROM {EVENT_LOG_TABLE}
-            ORDER BY case_id, event_timestamp
-        """
-
-    df = query_lakehouse(sql)
     if df.empty:
         return df
 
     df["event_timestamp"] = pd.to_datetime(df["event_timestamp"])
-    df["cost"] = pd.to_numeric(df["cost"], errors="coerce")
-    df["time_since_prev_seconds"] = pd.to_numeric(df["time_since_prev_seconds"], errors="coerce")
-    df["event_rank"] = pd.to_numeric(df["event_rank"], errors="coerce")
+    for col in ["cost", "time_since_prev_seconds", "event_rank"]:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
 
-    return pm4py.format_dataframe(
-        df, case_id="case_id", activity_key="activity", timestamp_key="event_timestamp",
-    )
-
-
-def load_filter_values() -> list[str]:
-    """Load distinct values for the filter dropdown."""
-    filter_col = _detect_filter_column()
-    if not filter_col:
-        return []
-    sql = f"SELECT DISTINCT {filter_col} FROM {EVENT_LOG_TABLE} ORDER BY {filter_col}"
-    df = query_lakehouse(sql)
-    return df[filter_col].dropna().tolist()
+    if "case_id" in df.columns and "activity" in df.columns:
+        return pm4py.format_dataframe(
+            df, case_id="case_id", activity_key="activity", timestamp_key="event_timestamp",
+        )
+    return df
 
 
-# ── Plotly-based DFG Visualization (no graphviz needed) ──
+def load_ocel_stats(events_table: str) -> dict:
+    """Load OCEL-specific stats (objects, links)."""
+    base = events_table.replace("_ocel_events", "")
+    e2o_table = f"{base}_ocel_e2o"
+    objects_table = f"{base}_ocel_objects"
+
+    try:
+        obj_df = query(f"SELECT object_type, COUNT(*) AS cnt FROM {objects_table} GROUP BY object_type ORDER BY cnt DESC")
+        links_df = query(f"""
+            SELECT links, COUNT(*) AS events FROM (
+                SELECT event_id, COUNT(*) AS links FROM {e2o_table} GROUP BY event_id
+            ) GROUP BY links ORDER BY links
+        """)
+        total_links = query(f"SELECT COUNT(*) AS cnt FROM {e2o_table}")
+        return {
+            "objects": obj_df,
+            "links": links_df,
+            "total_links": int(total_links["cnt"].iloc[0]),
+        }
+    except Exception:
+        return None
+
+
+# ── DFG Visualization ──
 
 def build_dfg_figure(event_log: pd.DataFrame) -> go.Figure:
-    """
-    Build a Directly-Follows Graph as a Plotly figure.
-    Uses a layered layout based on median event rank per activity.
-    """
     dfg, start_acts, end_acts = pm4py.discover_dfg(event_log)
     act_counts = pm4py.get_event_attribute_values(event_log, "concept:name")
 
     if not dfg:
         return go.Figure().add_annotation(text="No process data", showarrow=False)
 
-    # Get all activities and compute their typical position in the process
     activities = sorted(act_counts.keys())
     act_median_rank = (
-        event_log.groupby("concept:name")["event_rank"]
-        .median()
-        .to_dict()
+        event_log.groupby("concept:name")["event_rank"].median().to_dict()
         if "event_rank" in event_log.columns
         else {a: i for i, a in enumerate(activities)}
     )
 
-    # Layout: x = median rank (left-to-right flow), y = spread vertically
-    sorted_acts = sorted(activities, key=lambda a: act_median_rank.get(a, 0))
-    pos = {}
-    for i, act in enumerate(sorted_acts):
-        pos[act] = (i * 2, 0)  # simple horizontal layout
-
-    # If multiple activities share similar ranks, offset vertically
     rank_groups = {}
-    for act in sorted_acts:
+    for act in activities:
         r = round(act_median_rank.get(act, 0))
         rank_groups.setdefault(r, []).append(act)
     pos = {}
     for rank, group in rank_groups.items():
         for j, act in enumerate(group):
-            y_offset = (j - (len(group) - 1) / 2) * 1.5
-            pos[act] = (rank * 2, y_offset)
+            pos[act] = (rank * 2, (j - (len(group) - 1) / 2) * 1.5)
 
     max_count = max(act_counts.values()) if act_counts else 1
     max_edge = max(dfg.values()) if dfg else 1
-
     fig = go.Figure()
 
-    # Draw edges
     for (src, tgt), freq in dfg.items():
         if src not in pos or tgt not in pos:
             continue
@@ -165,53 +157,36 @@ def build_dfg_figure(event_log: pd.DataFrame) -> go.Figure:
         x1, y1 = pos[tgt]
         width = max(0.5, 4 * freq / max_edge)
         opacity = max(0.2, freq / max_edge)
-
         fig.add_trace(go.Scatter(
-            x=[x0, x1, None], y=[y0, y1, None],
-            mode="lines",
-            line=dict(width=width, color=f"rgba(100, 100, 100, {opacity})"),
-            hoverinfo="text",
-            text=f"{src} → {tgt}<br>Frequency: {freq:,}",
-            showlegend=False,
+            x=[x0, x1, None], y=[y0, y1, None], mode="lines",
+            line=dict(width=width, color=f"rgba(100,100,100,{opacity})"),
+            hovertext=f"{src} → {tgt}<br>Freq: {freq:,}", hoverinfo="text", showlegend=False,
         ))
-
-        # Arrowhead (small triangle at midpoint-towards-target)
-        mx = x0 * 0.3 + x1 * 0.7
-        my = y0 * 0.3 + y1 * 0.7
+        mx, my = x0 * 0.3 + x1 * 0.7, y0 * 0.3 + y1 * 0.7
         fig.add_annotation(
-            x=x1, y=y1, ax=mx, ay=my,
-            xref="x", yref="y", axref="x", ayref="y",
-            showarrow=True, arrowhead=2, arrowsize=1.5,
-            arrowwidth=width, arrowcolor=f"rgba(100,100,100,{opacity})",
+            x=x1, y=y1, ax=mx, ay=my, xref="x", yref="y", axref="x", ayref="y",
+            showarrow=True, arrowhead=2, arrowsize=1.5, arrowwidth=width,
+            arrowcolor=f"rgba(100,100,100,{opacity})",
         )
 
-    # Draw nodes
     node_x = [pos[a][0] for a in activities if a in pos]
     node_y = [pos[a][1] for a in activities if a in pos]
     node_text = [a for a in activities if a in pos]
     node_size = [max(20, 60 * act_counts.get(a, 0) / max_count) for a in activities if a in pos]
-    node_hover = [f"<b>{a}</b><br>Count: {act_counts.get(a, 0):,}" for a in activities if a in pos]
 
     fig.add_trace(go.Scatter(
-        x=node_x, y=node_y,
-        mode="markers+text",
+        x=node_x, y=node_y, mode="markers+text",
         marker=dict(size=node_size, color="#1B3A5C", line=dict(width=2, color="white")),
-        text=node_text,
-        textposition="top center",
-        textfont=dict(size=10),
-        hovertext=node_hover,
-        hoverinfo="text",
-        showlegend=False,
+        text=node_text, textposition="top center", textfont=dict(size=10),
+        hovertext=[f"<b>{a}</b><br>Count: {act_counts.get(a,0):,}" for a in activities if a in pos],
+        hoverinfo="text", showlegend=False,
     ))
 
     fig.update_layout(
         xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
         yaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-        plot_bgcolor="white",
-        margin=dict(l=20, r=20, t=20, b=20),
-        height=450,
+        plot_bgcolor="white", margin=dict(l=20, r=20, t=20, b=20), height=450,
     )
-
     return fig
 
 
@@ -219,15 +194,14 @@ def build_dfg_figure(event_log: pd.DataFrame) -> go.Figure:
 
 app.layout = dbc.Container([
     dbc.Row([
-        dbc.Col(html.H2("Process Mining Dashboard"), width=8),
-        dbc.Col(
-            dcc.Dropdown(id="department-filter", placeholder="All (filter loading...)", clearable=True),
-            width=4,
-        ),
+        dbc.Col(html.H2("Process Mining Dashboard"), width=6),
+        dbc.Col(dcc.Dropdown(id="table-selector", placeholder="Select event log table..."), width=6),
     ], className="my-3"),
 
+    # KPI row
     dbc.Row(id="kpi-cards", className="mb-3"),
 
+    # Process map + variants
     dbc.Row([
         dbc.Col(dbc.Card([
             dbc.CardHeader("Discovered Process Map (DFG)"),
@@ -239,17 +213,19 @@ app.layout = dbc.Container([
         ]), width=4),
     ], className="mb-3"),
 
+    # Bottlenecks + duration / OCEL stats
     dbc.Row([
         dbc.Col(dbc.Card([
-            dbc.CardHeader("Bottleneck Transitions (Median Hours)"),
+            dbc.CardHeader("Bottleneck Transitions"),
             dbc.CardBody(dcc.Graph(id="bottleneck-chart")),
         ]), width=6),
         dbc.Col(dbc.Card([
-            dbc.CardHeader("Case Duration Distribution"),
-            dbc.CardBody(dcc.Graph(id="duration-chart")),
+            dbc.CardHeader(id="right-panel-header"),
+            dbc.CardBody(id="right-panel-content"),
         ]), width=6),
     ], className="mb-3"),
 
+    # Conformance
     dbc.Row([
         dbc.Col(dbc.Card([
             dbc.CardHeader("Conformance: Fitness vs. Discovered Model"),
@@ -262,15 +238,15 @@ app.layout = dbc.Container([
 # ── Callbacks ──
 
 @callback(
-    Output("department-filter", "options"),
-    Output("department-filter", "placeholder"),
-    Input("department-filter", "id"),  # fires once on load
+    Output("table-selector", "options"),
+    Output("table-selector", "value"),
+    Input("table-selector", "id"),
 )
-def populate_filter(_):
-    values = load_filter_values()
-    filter_col = FILTER_COL or "filter"
-    label = filter_col.replace("_", " ").title()
-    return [{"label": v, "value": v} for v in values], f"All {label}s"
+def populate_tables(_):
+    tables = discover_tables()
+    options = [{"label": t["label"], "value": t["value"]} for t in tables]
+    default = options[0]["value"] if options else None
+    return options, default
 
 
 @callback(
@@ -278,22 +254,24 @@ def populate_filter(_):
     Output("process-map", "figure"),
     Output("variant-chart", "figure"),
     Output("bottleneck-chart", "figure"),
-    Output("duration-chart", "figure"),
+    Output("right-panel-header", "children"),
+    Output("right-panel-content", "children"),
     Output("conformance-results", "children"),
-    Input("department-filter", "value"),
+    Input("table-selector", "value"),
 )
-def update_dashboard(department):
-    df = load_event_log(department)
+def update_dashboard(table):
+    empty = go.Figure().add_annotation(text="Select a table", showarrow=False)
+    if not table:
+        return [], empty, empty, empty, "Info", "Select an event log table above.", ""
 
+    df = load_event_log(table)
     if df.empty:
-        empty = go.Figure().add_annotation(text="No data", showarrow=False)
-        return [], empty, empty, empty, empty, "No data available."
+        return [], empty, empty, empty, "Info", "No data in selected table.", ""
 
     # ── KPIs ──
     n_cases = df["case:concept:name"].nunique()
     n_events = len(df)
     n_activities = df["concept:name"].nunique()
-
     case_descs = case_statistics.get_cases_description(df)
     durations_days = pd.Series([c["caseDuration"] / 86400 for c in case_descs.values()])
     median_dur = durations_days.median()
@@ -321,58 +299,78 @@ def update_dashboard(department):
     top_variants = sorted(variants.items(), key=lambda x: -x[1])[:10]
     v_labels = []
     for v, _ in top_variants:
-        # pm4py returns variant keys as tuples of activity names
         acts = list(v) if isinstance(v, tuple) else v.split(",")
-        label = " → ".join(acts[:3]) + ("..." if len(acts) > 3 else "")
+        label = " -> ".join(acts[:3]) + ("..." if len(acts) > 3 else "")
         v_labels.append(label)
 
     variant_fig = go.Figure(go.Bar(
-        x=[v[1] for v in top_variants],
-        y=v_labels,
-        orientation="h",
-        marker_color="#1B3A5C",
+        x=[v[1] for v in top_variants], y=v_labels,
+        orientation="h", marker_color="#1B3A5C",
     ))
     variant_fig.update_layout(
         yaxis=dict(autorange="reversed"),
-        margin=dict(l=10, r=10, t=10, b=10),
-        height=400,
+        margin=dict(l=10, r=10, t=10, b=10), height=400,
     )
 
     # ── Bottlenecks ──
     perf_dfg, _, _ = pm4py.discover_performance_dfg(df)
-    # pm4py returns dicts with 'mean','median','min','max' — extract mean seconds
+
     def _perf_value(v):
-        if isinstance(v, dict):
-            return v.get("mean", v.get("median", 0))
-        return v
+        return v.get("mean", v.get("median", 0)) if isinstance(v, dict) else v
 
     edges = sorted(perf_dfg.items(), key=lambda x: -_perf_value(x[1]))[:10]
     bottleneck_fig = go.Figure(go.Bar(
         x=[_perf_value(e[1]) / 3600 for e in edges],
-        y=[f"{e[0][0]} → {e[0][1]}" for e in edges],
-        orientation="h",
-        marker_color="#E74C3C",
+        y=[f"{e[0][0]} -> {e[0][1]}" for e in edges],
+        orientation="h", marker_color="#E74C3C",
     ))
     bottleneck_fig.update_layout(
-        yaxis=dict(autorange="reversed"),
-        xaxis_title="Mean Hours",
-        margin=dict(l=10, r=10, t=10, b=10),
-        height=400,
+        yaxis=dict(autorange="reversed"), xaxis_title="Mean Hours",
+        margin=dict(l=10, r=10, t=10, b=10), height=400,
     )
 
-    # ── Duration Distribution ──
-    duration_fig = px.histogram(
-        durations_days, nbins=40,
-        labels={"value": "Case Duration (days)", "count": "Cases"},
-    )
-    duration_fig.update_layout(
-        showlegend=False,
-        margin=dict(l=10, r=10, t=10, b=10),
-    )
-    duration_fig.add_vline(
-        x=median_dur, line_dash="dash", line_color="red",
-        annotation_text=f"Median: {median_dur:.1f}d",
-    )
+    # ── Right Panel: OCEL stats or Duration distribution ──
+    ocel_stats = load_ocel_stats(table) if "ocel" in table else None
+
+    if ocel_stats:
+        # OCEL: show object types + links per event
+        obj_df = ocel_stats["objects"]
+        obj_fig = go.Figure(go.Bar(
+            x=obj_df["cnt"].astype(int).tolist(),
+            y=obj_df["object_type"].tolist(),
+            orientation="h", marker_color="#2ECC71",
+        ))
+        obj_fig.update_layout(
+            yaxis=dict(autorange="reversed"),
+            margin=dict(l=10, r=10, t=10, b=10), height=150,
+        )
+
+        links_df = ocel_stats["links"]
+        links_fig = go.Figure(go.Bar(
+            x=links_df["links"].astype(int).tolist(),
+            y=links_df["events"].astype(int).tolist(),
+            marker_color="#3498DB",
+        ))
+        links_fig.update_layout(
+            xaxis_title="Links per event", yaxis_title="Event count",
+            margin=dict(l=10, r=10, t=10, b=10), height=150,
+        )
+
+        right_header = f"OCEL: {ocel_stats['total_links']:,} object links"
+        right_content = html.Div([
+            html.H6("Object Types"), dcc.Graph(figure=obj_fig, config={"displayModeBar": False}),
+            html.H6("Links per Event"), dcc.Graph(figure=links_fig, config={"displayModeBar": False}),
+        ])
+    else:
+        # Traditional: duration distribution
+        duration_fig = px.histogram(durations_days, nbins=40,
+            labels={"value": "Case Duration (days)", "count": "Cases"})
+        duration_fig.update_layout(showlegend=False, margin=dict(l=10, r=10, t=10, b=10))
+        duration_fig.add_vline(x=median_dur, line_dash="dash", line_color="red",
+            annotation_text=f"Median: {median_dur:.1f}d")
+
+        right_header = "Case Duration Distribution"
+        right_content = dcc.Graph(figure=duration_fig)
 
     # ── Conformance ──
     process_tree = pm4py.discover_process_tree_inductive(df)
@@ -381,28 +379,20 @@ def update_dashboard(department):
     avg_fitness = fitness["average_trace_fitness"]
     pct_fitting = fitness.get("percentage_of_fitting_traces", avg_fitness * 100)
 
-    conformance = dbc.Row([
-        dbc.Col([
-            dbc.Progress(
-                value=avg_fitness * 100,
-                label=f"Fitness: {avg_fitness:.1%}",
-                color="success" if avg_fitness > 0.8 else "warning",
-                className="mb-2",
-                style={"height": "30px"},
-            ),
-            html.P(
-                f"{pct_fitting:.0f}% of cases are fully explained by the discovered model. "
-                f"Remaining cases contain deviations (rework loops, skipped steps, exceptions)."
-            ),
-            html.Small(
-                "Note: this measures how well the Inductive Miner's model fits the observed data. "
-                "For compliance checking against a prescribed process, see the analysis notebook.",
-                className="text-muted",
-            ),
-        ], width=12),
-    ])
+    conformance = dbc.Row([dbc.Col([
+        dbc.Progress(
+            value=avg_fitness * 100, label=f"Fitness: {avg_fitness:.1%}",
+            color="success" if avg_fitness > 0.8 else "warning",
+            className="mb-2", style={"height": "30px"},
+        ),
+        html.P(f"{pct_fitting:.0f}% of cases fully explained by the discovered model."),
+        html.Small(
+            "Measures how well the Inductive Miner's model fits observed behavior.",
+            className="text-muted",
+        ),
+    ], width=12)])
 
-    return kpis, process_map_fig, variant_fig, bottleneck_fig, duration_fig, conformance
+    return kpis, process_map_fig, variant_fig, bottleneck_fig, right_header, right_content, conformance
 
 
 if __name__ == "__main__":

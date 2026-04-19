@@ -168,7 +168,78 @@ for i in range(2000):
                     "processed_by": random.choice(RESOURCES),
                 })
 
-print(f"Generated:")
+print(f"Generated (before noise):")
+print(f"  PRs:       {len(prs):,}")
+print(f"  POs:       {len(pos):,}")
+print(f"  GRs:       {len(grs):,}")
+print(f"  Invoices:  {len(invoices):,}")
+print(f"  Payments:  {len(payments):,}")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Add Realistic Noise
+# MAGIC
+# MAGIC Real data is messy. We inject:
+# MAGIC - **Duplicate events** (3% of GRs posted twice)
+# MAGIC - **Null timestamps** (2% of POs missing approved_at even though status = approved)
+# MAGIC - **Orphan records** (invoices referencing non-existent POs)
+# MAGIC - **Inconsistent supplier IDs** (typos, case differences)
+# MAGIC - **Out-of-order timestamps** (some GRs posted before PO approval)
+# MAGIC - **Missing enrichment keys** (5% of POs have null supplier_id)
+
+# COMMAND ----------
+
+# Duplicate ~3% of goods receipts (same GR posted twice)
+num_dupes = int(len(grs) * 0.03)
+dupe_indices = random.sample(range(len(grs)), num_dupes)
+for idx in dupe_indices:
+    dupe = dict(grs[idx])
+    dupe["gr_id"] = dupe["gr_id"] + "-DUP"
+    grs.append(dupe)
+
+# Null timestamps: 2% of approved POs have approved_at = None (data quality issue)
+num_null_ts = int(len(pos) * 0.02)
+for idx in random.sample(range(len(pos)), num_null_ts):
+    if pos[idx]["status"] == "approved":
+        pos[idx]["approved_at"] = None
+
+# Orphan invoices: 20 invoices referencing POs that don't exist
+for i in range(20):
+    invoices.append({
+        "invoice_id": f"INV-ORPHAN-{i+1:03d}",
+        "po_id": f"PO-GHOST-{i+1:05d}-1",
+        "supplier_id": f"SUP-{random.randint(0, 149):04d}",
+        "received_date": datetime(2024, 3, 1) + timedelta(hours=random.uniform(0, 720)),
+        "cleared_date": None,
+        "invoice_amount": round(random.uniform(100, 5000), 2),
+        "three_way_match": "fail",
+    })
+
+# Inconsistent supplier IDs: 1% of POs have typos (extra space, lowercase)
+num_typo = int(len(pos) * 0.01)
+for idx in random.sample(range(len(pos)), num_typo):
+    pos[idx]["supplier_id"] = pos[idx]["supplier_id"].lower() + " "
+
+# Out-of-order: 1% of GRs have posting_date BEFORE the PO approval
+num_ooo = int(len(grs) * 0.01)
+for idx in random.sample(range(len(grs)), min(num_ooo, len(grs))):
+    grs[idx]["posting_date"] = grs[idx]["posting_date"] - timedelta(days=random.randint(5, 30))
+
+# Missing enrichment keys: 5% of POs have null supplier_id
+num_null_sup = int(len(pos) * 0.05)
+for idx in random.sample(range(len(pos)), num_null_sup):
+    pos[idx]["supplier_id"] = None
+
+print(f"\nNoise added:")
+print(f"  Duplicate GRs:          {num_dupes}")
+print(f"  Null PO approved_at:    {num_null_ts}")
+print(f"  Orphan invoices:        20")
+print(f"  Supplier ID typos:      {num_typo}")
+print(f"  Out-of-order GRs:       {num_ooo}")
+print(f"  Null supplier_ids:      {num_null_sup}")
+
+print(f"\nFinal counts:")
 print(f"  PRs:       {len(prs):,}")
 print(f"  POs:       {len(pos):,}")
 print(f"  GRs:       {len(grs):,}")

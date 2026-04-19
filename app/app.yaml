@@ -4,5 +4,7 @@ command:
 env:
   - name: DATABRICKS_WAREHOUSE_ID
     value: "862f1d757f0424f7"
-  - name: EVENT_LOG_TABLE
-    value: "process_mining.silver.sales_pipeline_event_log"
+  - name: CATALOG
+    value: "process_mining"
+  - name: SCHEMA
+    value: "silver"
