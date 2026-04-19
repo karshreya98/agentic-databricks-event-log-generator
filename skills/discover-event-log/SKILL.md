@@ -165,6 +165,74 @@ Use `manage_uc_objects` to create catalog/schema if needed.
 
 ---
 
+## Phase 3b: OCEL Output (Object-Centric, optional)
+
+If the user requests OCEL output, or if the data naturally has multiple object types per event, generate an **OCEL 2.0** output alongside the traditional event log.
+
+### When to suggest OCEL
+
+- Multiple ID columns exist in the event data (e.g., `po_number`, `invoice_id`, `supplier_id`)
+- Events naturally relate to more than one object (e.g., a goods receipt relates to both a PO and a supplier)
+- The user mentions "object-centric", "OCEL", or "multi-object"
+
+### OCEL 2.0 Schema (3 tables)
+
+**Events table** (`<output>_ocel_events`):
+```sql
+CREATE OR REPLACE TABLE <output>_ocel_events AS
+SELECT
+  event_id,           -- unique per event (e.g., ROW_NUMBER or concat of source+id)
+  activity,
+  event_timestamp,
+  resource,
+  cost,
+  source_table
+FROM (<union_of_all_extractions>)
+```
+
+**Objects table** (`<output>_ocel_objects`):
+```sql
+CREATE OR REPLACE TABLE <output>_ocel_objects AS
+-- Collect all unique object IDs across all types
+SELECT object_id, object_type FROM (
+  SELECT DISTINCT po_number AS object_id, 'PurchaseOrder' AS object_type FROM ...
+  UNION ALL
+  SELECT DISTINCT invoice_id, 'Invoice' FROM ...
+  UNION ALL
+  SELECT DISTINCT supplier_id, 'Supplier' FROM ...
+  -- etc. for each ID column discovered
+)
+```
+
+**Event-to-Object relationships** (`<output>_ocel_e2o`):
+```sql
+CREATE OR REPLACE TABLE <output>_ocel_e2o AS
+-- Each event links to ALL objects it relates to (many-to-many)
+SELECT event_id, po_number AS object_id, 'PurchaseOrder' AS object_type FROM events WHERE po_number IS NOT NULL
+UNION ALL
+SELECT event_id, invoice_id, 'Invoice' FROM events WHERE invoice_id IS NOT NULL
+UNION ALL
+SELECT event_id, supplier_id, 'Supplier' FROM events WHERE supplier_id IS NOT NULL
+-- etc.
+```
+
+### Key difference from traditional
+
+Traditional: each event has ONE case_id → forces a single perspective
+OCEL: each event links to MULTIPLE objects → preserves all relationships
+
+Example: a "Post Goods Receipt" event in traditional PM belongs to `po_number = P2P-001`.
+In OCEL, the same event links to: PO `P2P-001` + Supplier `SUP-042` + Warehouse `WH-East`.
+
+### OCEL quality checks
+
+- Events table has unique event_ids
+- E2O table has no orphan event_ids or object_ids
+- Every event links to at least one object
+- Object types are consistent and meaningful
+
+---
+
 ## Phase 4: Report
 
 ```
