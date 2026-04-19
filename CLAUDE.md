@@ -7,8 +7,6 @@
 ## Repo Layout
 
 - `skills/` — Canonical skill definition (shared by Claude Code + Genie Code)
-- `eventlog/` — Python package: EventLogBuilder, EventLogEnricher, EventLogValidator
-- `templates/` — YAML configs for P2P, O2C, incident management
 - `app/` — pm4py Databricks App
 - `examples/` — Synthetic data + step-by-step guides
 - `scripts/` — Setup and install scripts

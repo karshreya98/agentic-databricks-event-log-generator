@@ -55,16 +55,6 @@ Open Genie Code (Agent mode):
 
 > @discover-event-log Build an event log from my_catalog.my_schema — it's a sales pipeline process
 
-### Without AI
-
-```python
-%pip install /Workspace/Users/<you>/agentic-databricks-event-log-generator/
-
-from eventlog import EventLogBuilder
-builder = EventLogBuilder(spark, "templates/procure_to_pay.yaml")
-builder.save()
-```
-
 ---
 
 ## Examples
@@ -116,23 +106,11 @@ agentic-databricks-event-log-generator/
 │   ├── app.yaml
 │   └── requirements.txt
 │
-├── eventlog/                           # Python package (pip-installable)
-│   ├── builder.py                      #   YAML config → Spark → event log
-│   ├── enricher.py                     #   Catalog scanner for enrichments
-│   ├── validator.py                    #   Quality checks
-│   └── schemas.py                      #   Config validation
-│
-├── templates/                          # Pre-built YAML configs
-│   ├── procure_to_pay.yaml
-│   ├── order_to_cash.yaml
-│   └── incident_management.yaml
-│
 ├── examples/                           # End-to-end walkthrough
 │   ├── 01_create_source_tables.py
 │   ├── 02_run_discovery_claude_code.md
 │   └── 03_run_discovery_genie_code.md
 │
-├── setup.py
 ├── CLAUDE.md
 ├── blog.md
 └── README.md
