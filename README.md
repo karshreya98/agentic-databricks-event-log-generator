@@ -6,6 +6,26 @@ An AI-powered toolkit that discovers, builds, and enriches process mining event 
 
 Companion blog: [Process Mining on Databricks: From Event Logs to Operational Intelligence](blog.md)
 
+## Why Databricks for Process Mining
+
+The data is already here. Most organizations ingest their SAP, Salesforce, ServiceNow, and ERP data into the Databricks Lakehouse for analytics, reporting, and ML. That same operational data — purchase orders, invoices, tickets, orders — is exactly what process mining needs. It doesn't require a new pipeline. It requires a new lens.
+
+**But building an event log from raw operational tables is the bottleneck.** Which tables contain events? What's the case ID? How do you standardize activity names across source systems? Where's the reference data to enrich with? This is where every process mining project stalls — and it's the problem this toolkit solves.
+
+**What the lakehouse uniquely brings:**
+
+- **The data is already governed.** Unity Catalog provides metadata, column descriptions, lineage, tags, and access controls. The agent reads all of this to understand your tables — no manual profiling needed.
+
+- **Enrichment with operational context.** Process mining tools train their AI on event log features only. In the lakehouse, the event log sits alongside supplier master data, contract terms, customer records, inventory levels — signals the event log alone doesn't carry. A PO stuck at approval might have nothing to do with the process and everything to do with the supplier's credit rating. That signal is in the lakehouse.
+
+- **The event log is a data product, not a tool artifact.** When Celonis builds an event log, it lives inside Celonis. Here, the event log is a Unity Catalog table — governed, discoverable, and consumable by any tool. Celonis reads it via Delta Sharing. The pm4py app visualizes it. ML models train on it. All from the same table, with the same governance.
+
+- **Two agent runtimes, zero lock-in.** The same skill runs on Claude Code (via MCP tools) or Genie Code (native UC access). You pick the agent, the data stays in the lakehouse.
+
+Process mining tools like Celonis are excellent at what they do — discovery, conformance, visualization, action recommendations. This toolkit doesn't replace them. It makes the lakehouse the foundation they run on, and automates the hardest part: getting from raw tables to a clean, enriched, governed event log.
+
+---
+
 ## How It Works
 
 ```
