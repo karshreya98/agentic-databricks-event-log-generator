@@ -49,10 +49,25 @@ Optionally use `manage_uc_tags(action="query_column_tags", catalog_filter=...)` 
 
 | Classification | What to look for in the metadata | Action |
 |---|---|---|
+| **Existing event log** | Has columns named `case_id`/`activity`/`timestamp` (or similar), multiple rows per case ID, high row count | **Skip building — go straight to enrichment + validation** |
 | **Event source** | Has date/timestamp columns + a high-cardinality ID (`unique_count` near `total_rows`) | Extract events |
 | **Reference data** | Has ID columns matching event tables, no timestamps. `comment` describes it as master/reference. | Enrichment |
 | **Aggregate** | Very low `total_rows`. Columns are dimensions with low `unique_count`. No high-cardinality ID. | **Skip** |
 | **Duplicate** | Same columns as another table, similar `total_rows`. Name prefix `raw_`/`cleaned_`. | **Skip** |
+
+### If an Event Log Already Exists
+
+A table is likely already an event log if it has:
+- A column like `case_id`, `process_id`, or `trace_id` (high cardinality)
+- A column like `activity`, `event`, `action`, or `step` (low-to-moderate cardinality with descriptive string values)
+- A timestamp column like `event_timestamp`, `timestamp`, `event_time`
+- Multiple rows per case ID (avg rows per case_id > 1)
+
+If you find one: **don't rebuild it.** Instead:
+1. Validate it (Phase 3 quality gates)
+2. Look for enrichment tables to join (Phase 2.4)
+3. Add window functions (event_rank, time_since_prev) if missing
+4. Save the enriched version to the output table
 
 ### Key Column Identification
 
