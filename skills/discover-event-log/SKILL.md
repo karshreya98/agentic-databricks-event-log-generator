@@ -119,6 +119,51 @@ For each candidate: test join match rate with `execute_sql`. Handle column name 
 
 ---
 
+## Phase 2b: Review & Confirm (MANDATORY)
+
+**Before building, present the proposed mappings to the user and ask for confirmation.**
+
+Show a summary table:
+
+```
+Proposed Event Log Mappings
+============================
+Case ID:    po_number (from purchase_orders)
+Output:     process_mining.silver.event_log
+
+Events:
+  Source Table               Activity                  Timestamp       Condition          Rows
+  ─────────────              ────────                  ─────────       ─────────          ────
+  purchase_orders            Create Purchase Order     created_at                         5,000
+  purchase_orders            Approve Purchase Order    approved_at     IS NOT NULL        4,750
+  goods_receipts             Post Goods Receipt        posting_date                       3,500
+  invoices                   Receive Invoice           received_date                      3,200
+  invoices                   Clear Invoice             cleared_date    IS NOT NULL        2,720
+  payments                   Process Payment           payment_date                       2,700
+
+Enrichments:
+  Table                  Join Key          Match Rate   Columns Added
+  ─────                  ────────          ──────────   ─────────────
+  supplier_master        supplier_id       92%          credit_risk_rating, on_time_delivery_rate, country
+  contracts              contract_id       88%          contract_type, amendment_count, payment_terms_days
+
+Format: Traditional (single case_id)
+       + OCEL 2.0 (if multiple object types detected)
+```
+
+Then ask: **"Does this look right? Any mappings to change, add, or remove before I build?"**
+
+**Wait for the user to confirm.** If they say:
+- "yes" / "looks good" → proceed to Phase 3
+- "change X" → adjust the mapping and re-show
+- "remove the enrichment from contracts" → drop it
+- "add department from the cost_centers table" → add it
+- "that's not the right case ID" → go back to Phase 2
+
+This is the human-in-the-loop checkpoint. The agent proposes, the user validates.
+
+---
+
 ## Phase 3: Build & Validate
 
 Build with `execute_sql`. Include as many columns as the data provides:
@@ -162,6 +207,48 @@ Use `manage_uc_objects` to create catalog/schema if needed.
 | Avg events per case | > 1 |
 
 **If any fails → back to Phase 2.**
+
+### Post-Build Validation (user can run independently)
+
+After saving, provide the user with standalone validation queries they can run in a notebook or SQL editor to verify the output without trusting the agent's report:
+
+```sql
+-- 1. Basic stats
+SELECT COUNT(*) AS events, COUNT(DISTINCT case_id) AS cases,
+       COUNT(DISTINCT activity) AS activities
+FROM <output_table>;
+
+-- 2. Activity distribution — do the counts make sense?
+SELECT activity, COUNT(*) AS cnt FROM <output_table> GROUP BY activity ORDER BY cnt DESC;
+
+-- 3. Sample a single case — does the process flow look right?
+SELECT case_id, activity, event_timestamp, resource
+FROM <output_table>
+WHERE case_id = (SELECT case_id FROM <output_table> LIMIT 1)
+ORDER BY event_timestamp;
+
+-- 4. Null check
+SELECT
+  SUM(CASE WHEN case_id IS NULL THEN 1 ELSE 0 END) AS null_case_ids,
+  SUM(CASE WHEN activity IS NULL THEN 1 ELSE 0 END) AS null_activities,
+  SUM(CASE WHEN event_timestamp IS NULL THEN 1 ELSE 0 END) AS null_timestamps
+FROM <output_table>;
+
+-- 5. Enrichment coverage — what % of rows have enrichment data?
+SELECT
+  COUNT(*) AS total_rows,
+  SUM(CASE WHEN <enrichment_col> IS NOT NULL THEN 1 ELSE 0 END) AS enriched,
+  ROUND(SUM(CASE WHEN <enrichment_col> IS NOT NULL THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 1) AS pct
+FROM <output_table>;
+
+-- 6. Duplicate check
+SELECT case_id, activity, event_timestamp, COUNT(*) AS dupes
+FROM <output_table>
+GROUP BY case_id, activity, event_timestamp
+HAVING COUNT(*) > 1;
+```
+
+**Always provide these queries in the report output** so the user can validate independently.
 
 ---
 
@@ -253,11 +340,19 @@ Columns:
 Quality:      All gates passed
 Tables used:  <n>
 Tables skipped: <n> (with reasons)
+
+Validate independently:
+  SELECT activity, COUNT(*) FROM <output> GROUP BY activity ORDER BY COUNT(*) DESC;
+  SELECT * FROM <output> WHERE case_id = '<sample>' ORDER BY event_timestamp;
 ```
+
+**Always ask:** "Want me to adjust anything, or does this look correct?"
 
 ---
 
 ## Error Recovery
+
+### Agent-side (automatic)
 
 | Error | Recovery |
 |---|---|
@@ -266,6 +361,29 @@ Tables skipped: <n> (with reasons)
 | Empty extraction | Add IS NOT NULL condition on timestamp |
 | Aggregate misidentified | Low row count + no unique ID → reclassify and skip |
 | Snapshot table | Derive events from timestamps, note approximation |
+| Quality gate fails | Go back to Phase 2, fix the specific mapping, rebuild |
+
+### User-side (corrections)
+
+If the user identifies an issue after the build (via the validation queries or by inspecting the data), they can tell the agent what to fix:
+
+- *"The case ID should be pr_id, not po_id"* → agent re-runs with the corrected case ID
+- *"Remove the Approve PO event — our process doesn't have that step"* → agent drops it and rebuilds
+- *"The timestamps on goods_receipts look wrong — they're before the PO creation"* → agent investigates the out-of-order issue, adds a filter or flags affected rows
+- *"Enrichment coverage is only 50% — can you find why?"* → agent checks for null join keys, supplier_id typos, case sensitivity mismatches
+- *"Add the warehouse column from goods_receipts as an activity attribute"* → agent adds it to the extraction
+
+**The agent should always be ready to iterate.** Event log creation is rarely right on the first pass. The review step (Phase 2b) catches most issues upfront, but post-build corrections are normal.
+
+### Fallback: manual SQL
+
+If the agent can't resolve an issue, provide the user with the generated SQL so they can modify it directly:
+
+- Show the full UNION ALL query that built the event log
+- Show each enrichment JOIN with match rates
+- The user can copy, edit, and run it in a notebook
+
+**Never leave the user stuck.** If the agent can't fix it, give them the SQL to fix it themselves.
 
 ---
 
