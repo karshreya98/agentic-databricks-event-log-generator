@@ -123,7 +123,22 @@ You ──▶ Claude Code ──▶ MCP tools ──▶ Databricks workspace
          manage_uc_objects ─┘── creates catalogs/schemas
 ```
 
-### Option B: Use a Pre-Built Template (no AI needed)
+### Option B: Genie Space with UC Function Tools (no Claude Code needed)
+
+For users without Claude Code / Anthropic subscription — runs entirely on Databricks FMAPI:
+
+1. Run `genie/01_create_uc_functions.py` to register process mining functions in Unity Catalog
+2. Run `genie/02_create_genie_space.py` to set up a Genie Space with custom instructions
+
+Users then ask natural language questions in the Genie Space:
+- *"Profile the tables in erp_raw"* → calls `process_mining.tools.profile_tables`
+- *"What are the bottleneck transitions?"* → calls `process_mining.tools.find_bottlenecks`
+- *"Show me the top process variants"* → calls `process_mining.tools.get_variants`
+- *"What reference tables could enrich my event log?"* → calls `process_mining.tools.find_enrichments`
+
+**Trade-off:** Genie handles the happy path well (structured queries, function calls). Claude Code handles the hard cases better (reasoning about ambiguous schemas, self-correcting failed mappings, deriving events from snapshot tables).
+
+### Option C: Use a Pre-Built Template (no AI needed)
 
 Edit a YAML template to match your table/column names, then build:
 
@@ -136,11 +151,11 @@ builder.summary()     # stats
 builder.save()        # write to Unity Catalog
 ```
 
-### Option C: Build + Validate in a Notebook
+### Option D: Build + Validate in a Notebook
 
 Import `notebooks/02_build_event_log.py` into your workspace — reads a YAML config, builds the event log, and validates quality using the `eventlog` package.
 
-### Option D: API Usage in Your Own Code
+### Option E: API Usage in Your Own Code
 
 ```python
 from eventlog import EventLogBuilder, EventLogEnricher, EventLogValidator
@@ -183,6 +198,10 @@ process-mining-databricks/
 │   ├── procure_to_pay.yaml             #   P2P
 │   ├── order_to_cash.yaml              #   O2C
 │   └── incident_management.yaml        #   ITSM
+│
+├── genie/                              # Databricks-native path (no Claude Code needed)
+│   ├── 01_create_uc_functions.py       #   Register process mining UC functions
+│   └── 02_create_genie_space.py        #   Set up Genie Space with custom instructions
 │
 ├── consumers/                          # Pluggable consumers of the event log
 │   ├── pm4py-app/                      #   Interactive PM dashboard (Databricks App)
