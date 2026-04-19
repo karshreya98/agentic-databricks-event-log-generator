@@ -1,6 +1,6 @@
 # Process Mining on Databricks: From Event Logs to Operational Intelligence
 
-*A few months ago, a customer asked me: "Can I do process mining on Databricks?" The answer changed how I think about where the value lives — not in the algorithms, but in the data platform underneath them.*
+*A few months ago, a customer asked me: "Can I do process mining on Databricks?" The answer led me to build an open-source toolkit that bridges the gap between the operational data already in your lakehouse and the process mining tools that analyze it.*
 
 ---
 
