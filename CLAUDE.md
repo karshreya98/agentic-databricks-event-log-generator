@@ -2,24 +2,23 @@
 
 ## What This Repo Is
 
-Toolkit for discovering, building, and enriching process mining event logs on Databricks using agentic skills. Produces governed UC tables consumable by Celonis (Delta Sharing) or pm4py (Databricks App).
-
-## Key Components
-
-- `.claude/skills/discover-event-log/` — Agentic skill: scan → reason → test → build
-- `genie-code/discover-event-log/` — Same skill for Genie Code
-- `eventlog/` — Python package: EventLogBuilder, EventLogEnricher, EventLogValidator
-- `templates/` — YAML configs for P2P, O2C, incident management
-- `consumers/pm4py-app/` — Interactive process mining dashboard
-- `governance/` — Delta Sharing setup
+Toolkit for discovering, building, and enriching process mining event logs on Databricks. Uses agentic skills (Claude Code or Genie Code) to scan catalogs, reason about table structure, and produce governed event logs.
 
 ## Skills
 
-- `/discover-event-log` — Agentic event log discovery using Databricks MCP tools
+- `/discover-event-log` — Agentic event log discovery. Scans catalog, classifies tables, maps events, tests with SQL, enriches, validates quality.
 
-## Working with Databricks
+## Key Components
 
-- `get_table_details` for table profiling (schema + samples + stats in one call)
-- `execute_sql` for testing mappings and building tables
-- `manage_uc_objects` for catalog/schema creation
-- `manage_uc_tags` for reading PII/business tags
+- `.claude/skills/discover-event-log/` — Claude Code skill (auto-detected in this directory)
+- `genie-code/discover-event-log/` — Same skill for Genie Code
+- `eventlog/` — Python package: EventLogBuilder, EventLogEnricher, EventLogValidator
+- `templates/` — YAML configs for P2P, O2C, incident management
+- `consumers/pm4py-app/` — Interactive process mining Databricks App
+
+## Databricks MCP Tools Used
+
+- `get_table_details` — profiles tables (schema + samples + stats in one call)
+- `execute_sql` — tests mappings, validates quality, builds tables
+- `manage_uc_objects` — creates catalogs/schemas
+- `manage_uc_tags` — reads PII/business tags
