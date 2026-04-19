@@ -71,10 +71,26 @@ If you find one: **don't rebuild it.** Instead:
 
 ### Key Column Identification
 
-- **case_id**: High `unique_count` near `total_rows`, appears across tables. Examples: `po_number`, `opportunityid`.
-- **Timestamps**: `data_type` is date/timestamp. Each becomes a potential event.
-- **Status/stage**: Low `unique_count` with `value_counts` showing a progression → snapshot table.
-- **Resource**: Moderate cardinality (user IDs, names).
+**Mandatory three (minimum for any process mining tool):**
+- **case_id** (case key): High `unique_count` near `total_rows`, appears across tables. Examples: `po_number`, `opportunityid`, `incident_id`.
+- **activity**: What happened. Derived from timestamp column names or status/stage values.
+- **event_timestamp**: When it happened. `data_type` is date/timestamp.
+
+**Activity-level attributes (enrich each event row):**
+- **Resource / Performer**: Who executed the step. Moderate cardinality (user IDs, employee names).
+- **Org unit / Department / Cost center**: Which team or department.
+- **System / Channel**: Which source system produced this event (e.g., SAP, Ariba, Coupa).
+- **Status**: Document status at this activity (e.g., approved, pending, rejected).
+- **Flags**: Rework indicator, automation flag, manual vs system-generated.
+
+**Case-level attributes (enrich from reference tables — same value for all events in a case):**
+- **Value / Amount / Currency**: Order value, invoice amount.
+- **Document type / Priority / Category**: Business classification.
+- **Region / Country**: Geographic dimension.
+- **Customer / Vendor / Supplier**: Business partner details (name, industry, risk rating).
+- **SLA dates / Creation date / Due date**: Time-based case attributes.
+
+These align with what tools like Celonis call "advanced columns" — added on top of the mandatory three to enable richer analysis (filtering, grouping, root cause). **Always look for as many of these as the source data provides.**
 
 ### Snapshot Tables (critical pattern)
 
@@ -90,27 +106,51 @@ For each event source, define: activity name, timestamp column, optional conditi
 
 **Test every mapping with `execute_sql`** — run the extraction and verify timestamps look reasonable, case_id is populated, row count makes sense.
 
-For enrichments: test join match rate with `execute_sql`. Handle column name mismatches (`accountid` vs `id`) and conflicts (alias duplicates like `account_name`, `rep_name`).
+**Enrichments (case-level attributes):**
+
+Search for reference/master data tables that add context to each case. These become case-level attributes — the same value for every event in a case:
+
+- Supplier master → `credit_risk_rating`, `on_time_delivery_rate`, `country`
+- Customer master → `industry`, `segment`, `lifetime_value`
+- Contract data → `contract_type`, `amendment_count`, `payment_terms_days`
+- User/employee → `rep_name`, `title`, `role`, `region`
+
+For each candidate: test join match rate with `execute_sql`. Handle column name mismatches (`accountid` vs `id`) and conflicts (alias duplicates like `account_name`, `rep_name`). If the event log doesn't have the join key directly, look for bridge tables (e.g., event_log → purchase_orders → supplier_master).
 
 ---
 
 ## Phase 3: Build & Validate
 
-Build with `execute_sql`:
+Build with `execute_sql`. Include as many columns as the data provides:
 
 ```sql
 CREATE OR REPLACE TABLE <output_table> AS
 SELECT
-  case_id, activity, event_timestamp, resource, cost, source_table,
+  -- Mandatory three
+  case_id,
+  activity,
+  event_timestamp,
+
+  -- Activity-level attributes
+  resource,                              -- who performed it
+  department,                            -- org unit
+  source_table AS source_system,         -- which system
+  cost,                                  -- event cost if available
+
+  -- Computed metrics
   ROW_NUMBER() OVER (PARTITION BY case_id ORDER BY event_timestamp) AS event_rank,
   UNIX_TIMESTAMP(event_timestamp) - UNIX_TIMESTAMP(
     LAG(event_timestamp) OVER (PARTITION BY case_id ORDER BY event_timestamp)
   ) AS time_since_prev_seconds,
   COUNT(*) OVER (PARTITION BY case_id) AS case_event_count
+  -- Case-level attributes (from enrichment joins)
+  -- e.g., supplier_name, credit_risk_rating, contract_type, account_industry, rep_name
 FROM (<union_with_enrichment_joins>)
 ```
 
 Use `manage_uc_objects` to create catalog/schema if needed.
+
+**Column naming convention:** Prefix enrichment columns with their source to avoid ambiguity: `supplier_name`, `account_industry`, `rep_role`, `contract_type`.
 
 ### Quality Gates
 
@@ -132,8 +172,16 @@ Event Log Discovery Complete
 ================================
 Process:      <name>
 Output:       <table>
-Events / Cases / Activities: <counts>
-Enrichments:  <tables + match rates>
+Events:       <count>
+Cases:        <count>
+Activities:   <count> (<list>)
+
+Columns:
+  Mandatory:        case_id, activity, event_timestamp
+  Activity-level:   resource, department, source_system, cost
+  Computed:         event_rank, time_since_prev_seconds, case_event_count
+  Case-level:       <enrichment columns + match rates>
+
 Quality:      All gates passed
 Tables used:  <n>
 Tables skipped: <n> (with reasons)
