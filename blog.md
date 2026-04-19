@@ -71,8 +71,8 @@ Building the event log is the bottleneck. Which tables contain events? What's th
 We built an [open-source toolkit](https://github.com/karshreya98/agentic-databricks-event-log-generator) that automates this with an agentic AI skill. The skill teaches an agent process mining domain knowledge — table classification, event mapping, enrichment patterns, quality validation. The agent uses its built-in capabilities to scan your catalog and execute.
 
 It runs on two runtimes:
-- **Claude Code** — uses Databricks MCP tools for UC metadata and SQL execution
-- **Genie Code** — runs inside the workspace with native UC access, no external dependencies
+- **Claude Code** — uses the [Databricks AI Dev Kit](https://github.com/databricks-solutions/ai-dev-kit) MCP tools (`get_table_details`, `execute_sql`, `manage_uc_tags`) to profile tables, test mappings, and build the event log. The AI Dev Kit is an open-source collection of MCP tools and skills that connects Claude Code to Databricks workspaces.
+- **Genie Code** — runs inside the Databricks workspace with native UC access. No external dependencies or subscriptions needed.
 
 Same skill, same output, your choice of runtime.
 
@@ -137,7 +137,9 @@ The recipient configures the connection on their side:
 
 ### Exploration (pm4py Databricks App)
 
-For teams exploring process mining without Celonis, the toolkit includes a Databricks App with interactive process maps, variant analysis, bottleneck detection, and conformance checking. It auto-discovers all event log tables in the catalog and supports both traditional and OCEL formats.
+For teams exploring process mining without an enterprise tool, the toolkit includes a Databricks App built with [pm4py](https://github.com/process-intelligence-solutions/pm4py) — the leading open-source process mining library. It provides interactive process maps, variant analysis, bottleneck detection, and conformance checking. The app auto-discovers all event log tables in the catalog and supports both traditional and OCEL formats.
+
+**Note on pm4py licensing:** pm4py is licensed under AGPL-3.0, which requires derivative works to be open-sourced. This is fine for internal exploration, POCs, and research. For commercial or production use, evaluate the licensing implications or use an enterprise tool like Celonis instead.
 
 ---
 
