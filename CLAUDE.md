@@ -1,29 +1,25 @@
-# Process Mining Toolkit for Databricks
+# Agentic Event Log Generator for Databricks
 
 ## What This Repo Is
 
-A toolkit for building, enriching, and consuming process event logs on Databricks.
-Config-driven event log builder + agentic discovery skill + pluggable consumers.
+Toolkit for discovering, building, and enriching process mining event logs on Databricks using agentic skills. Produces governed UC tables consumable by Celonis (Delta Sharing) or pm4py (Databricks App).
 
 ## Key Components
 
+- `.claude/skills/discover-event-log/` — Agentic skill: scan → reason → test → build
+- `genie-code/discover-event-log/` — Same skill for Genie Code
 - `eventlog/` — Python package: EventLogBuilder, EventLogEnricher, EventLogValidator
 - `templates/` — YAML configs for P2P, O2C, incident management
-- `consumers/` — pm4py app, AI/BI dashboard, ML predictions
-- `governance/` — Delta Sharing, table docs, PII tags
-- `notebooks/02_build_event_log.py` — Standalone builder notebook
+- `consumers/pm4py-app/` — Interactive process mining dashboard
+- `governance/` — Delta Sharing setup
 
 ## Skills
 
-- `/discover-event-log` — Agentic event log discovery using Databricks MCP tools. Scans catalog, samples data, reasons about mappings, tests with SQL, validates quality.
+- `/discover-event-log` — Agentic event log discovery using Databricks MCP tools
 
 ## Working with Databricks
 
-- Use `execute_sql` MCP tool for SQL queries against the warehouse
-- Use `manage_uc_objects` for catalog/schema/volume operations
-- Use `run_python_file_on_databricks` for running Python on clusters
-- Demo tables live in the `process_mining` catalog on e2-demo-field-eng
-
-## YAML Config Format
-
-Event log configs follow the schema in `.claude/skills/discover-event-log/references/yaml-schema.md`
+- `get_table_details` for table profiling (schema + samples + stats in one call)
+- `execute_sql` for testing mappings and building tables
+- `manage_uc_objects` for catalog/schema creation
+- `manage_uc_tags` for reading PII/business tags

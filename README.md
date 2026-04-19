@@ -1,16 +1,23 @@
-# Process Mining Toolkit for Databricks
+# Agentic Event Log Generator for Databricks
 
-A reusable, open-source toolkit for building, enriching, and consuming process event logs on the Databricks Lakehouse.
+An AI-powered toolkit that discovers, builds, and enriches process mining event logs from any tables in Unity Catalog — using agentic skills on Claude Code or Genie Code.
 
-**Discover event logs with AI. Build from config. Enrich with operational context. Consume with any tool.**
+**Point an agent at your catalog. It scans, reasons, tests, and builds a governed, enriched event log. Consume it with Celonis via Delta Sharing, or explore with the pm4py Databricks App.**
 
 Companion blog: [Process Mining on Databricks: From Event Logs to Operational Intelligence](blog.md)
 
 ## Why This Exists
 
-Every process mining project repeats the same work: figure out which tables contain events, map columns, standardize names, find enrichment data. This toolkit automates that.
+Every process mining project starts with the same bottleneck: building a clean event log from messy operational tables. Which tables have events? What's the case ID? How do you standardize activity names across source systems? Where's the reference data to enrich with?
 
-It's not a replacement for process mining tools like Celonis — those are excellent at discovery, conformance, and visualization. This toolkit focuses on what the lakehouse is uniquely good at: **building governed, enriched event logs from messy operational data at scale**, and making them consumable by any tool.
+This toolkit automates that with an agentic skill that:
+- **Scans** your catalog and profiles tables using UC metadata
+- **Reasons** about which tables are event sources vs reference data vs aggregates
+- **Tests** every mapping with real SQL before committing
+- **Enriches** with operational context (supplier data, contracts, account info)
+- **Validates** quality gates and self-corrects if something fails
+
+The result is a governed event log in Unity Catalog — ready for Celonis, pm4py, or any tool.
 
 ## Architecture
 
@@ -18,15 +25,14 @@ It's not a replacement for process mining tools like Celonis — those are excel
  ┌──────────────────────────────────────────────────────────────────┐
  │                         Unity Catalog                            │
  │                                                                  │
- │  Source Tables ──▶ eventlog/ ──▶ Silver Event Log ──▶ Consumers  │
- │  (ERP, CRM,       (builder +     (governed,          │          │
- │   ITSM, etc.)      enricher)      enriched)           │          │
- │                        ▲                               ├─ Celonis │
- │                        │                               ├─ pm4py   │
- │               /discover-event-log                      ├─ AI/BI   │
- │               (Claude Code skill:                      └─ ML      │
- │                scans, samples, reasons,                           │
- │                tests, validates)                                  │
+ │  Source Tables ──▶ Agent Skill ──▶ Enriched Event Log            │
+ │  (ERP, CRM,       (scans, reasons,  (governed UC table)          │
+ │   ITSM, etc.)      tests, builds)         │                     │
+ │                                           ├──▶ Celonis           │
+ │  Runs on:                                 │    (Delta Sharing)   │
+ │  • Claude Code (.claude/skills/)          │                      │
+ │  • Genie Code  (.assistant/skills/)       └──▶ pm4py App         │
+ │                                                (Databricks App)  │
  └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -37,8 +43,8 @@ It's not a replacement for process mining tools like Celonis — those are excel
 ### One-Command Setup
 
 ```bash
-git clone https://github.com/shreya-kar/process-mining-databricks.git
-cd process-mining-databricks
+git clone https://github.com/karshreya98/agentic-databricks-event-log-generator.git
+cd agentic-databricks-event-log-generator
 ./setup.sh
 ```
 
@@ -47,148 +53,115 @@ The setup script checks for (and helps install) all prerequisites:
 - Databricks CLI + workspace authentication
 - Databricks AI Dev Kit (MCP tools)
 
-### Manual Setup (if you prefer)
+### Manual Setup
 
 <details>
-<summary>Click to expand step-by-step instructions</summary>
+<summary>Click to expand</summary>
 
 **1. Install Claude Code**
 ```bash
 npm install -g @anthropic-ai/claude-code
 ```
 
-**2. Install Databricks CLI**
+**2. Install Databricks CLI + authenticate**
 ```bash
 brew tap databricks/tap && brew install databricks
-```
-
-**3. Authenticate to your workspace**
-```bash
 databricks auth login --host https://YOUR-WORKSPACE.cloud.databricks.com
 ```
 
-Make sure `[DEFAULT]` in `~/.databrickscfg` points to your workspace — the MCP tools read this to connect.
+Make sure `[DEFAULT]` in `~/.databrickscfg` points to your workspace.
 
-**4. Install Databricks AI Dev Kit** (provides the MCP tools: `execute_sql`, `get_table_details`, etc.)
+**3. Install Databricks AI Dev Kit** (provides MCP tools)
 ```bash
 bash <(curl -sL https://raw.githubusercontent.com/databricks-solutions/ai-dev-kit/main/install.sh)
 ```
 
 Restart Claude Code after installing.
 
-**5. Clone and go**
+**4. Clone and go**
 ```bash
-git clone https://github.com/shreya-kar/process-mining-databricks.git
-cd process-mining-databricks
+git clone https://github.com/karshreya98/agentic-databricks-event-log-generator.git
+cd agentic-databricks-event-log-generator
 claude
 ```
 
 </details>
 
-### For Cluster-Based Usage Only (no Claude Code needed)
-
-If you just want the `eventlog` Python package and templates — no agentic discovery:
-
-```python
-# On a Databricks notebook
-%pip install /Workspace/Users/<you>/process-mining-databricks/
-```
-
 ---
 
 ## Quick Start
 
-### Option A: Agentic Discovery with Claude Code (recommended)
+### Option A: Claude Code (recommended)
 
-From this repo directory, start Claude Code and run:
+From this repo directory:
 
 ```
 /discover-event-log
 ```
 
-Then tell it what you're looking for:
+> "Build an event log from dbdemos.sales_pipeline — it's a sales pipeline process"
 
-> "Build an event log from the erp catalog — it's a procure-to-pay process"
-
-Claude scans your catalog using Databricks MCP tools (`get_table_details`, `execute_sql`, `manage_uc_tags`), reasons about mappings, tests extractions with real SQL, validates quality, and produces a tested YAML config + materialized event log.
-
-**What happens under the hood:**
-
-```
-You ──▶ Claude Code ──▶ MCP tools ──▶ Databricks workspace
-                            │
-         get_table_details ─┤── profiles tables (schema, samples, stats)
-         manage_uc_tags ────┤── reads PII/business tags
-         execute_sql ───────┤── tests mappings, validates, builds tables
-         manage_uc_objects ─┘── creates catalogs/schemas
-```
+Claude scans your catalog using Databricks MCP tools, reasons about mappings, tests with real SQL, and produces an enriched event log in Unity Catalog.
 
 ### Option B: Genie Code (no Claude Code or Anthropic subscription needed)
 
-Same agentic skill, running inside [Genie Code](https://www.databricks.com/product/genie-code) — Databricks' autonomous AI agent. Uses FMAPI, not Anthropic API.
+Copy the skill to your workspace:
 
 ```bash
-# Copy skill to your workspace
-databricks workspace import-dir ./genie-code/discover-event-log /Workspace/.assistant/skills/discover-event-log
+databricks workspace import-dir ./genie-code/discover-event-log \
+  /Workspace/Users/<you>/.assistant/skills/discover-event-log
 ```
 
-Then in Genie Code (Agent mode):
+In Genie Code (Agent mode):
 
-> @discover-event-log "Build an event log from dbdemos.sales_pipeline"
+> @discover-event-log Build an event log from dbdemos.sales_pipeline
 
-Same 4-phase workflow (scan → reason → test → build). Genie Code has native access to UC metadata, so no MCP tools needed.
+Same skill, same logic. Genie Code has native UC metadata access and runs on Databricks FMAPI.
 
-See [`genie-code/README.md`](genie-code/README.md) for details.
-
-### Option C: Use a Pre-Built Template (no AI needed)
-
-Edit a YAML template to match your table/column names, then build:
+### Option C: Use a YAML template (no AI needed)
 
 ```python
+%pip install /Workspace/Users/<you>/agentic-databricks-event-log-generator/
+
 from eventlog import EventLogBuilder
-
 builder = EventLogBuilder(spark, "templates/procure_to_pay.yaml")
-builder.build()       # preview
-builder.summary()     # stats
-builder.save()        # write to Unity Catalog
-```
-
-### Option D: Build + Validate in a Notebook
-
-Import `notebooks/02_build_event_log.py` into your workspace — reads a YAML config, builds the event log, and validates quality using the `eventlog` package.
-
-### Option E: API Usage in Your Own Code
-
-```python
-from eventlog import EventLogBuilder, EventLogEnricher, EventLogValidator
-
-# Build from config
-builder = EventLogBuilder(spark, "my_config.yaml")
 builder.save()
-
-# Discover enrichments from the catalog
-enricher = EventLogEnricher(spark, builder.build())
-candidates = enricher.discover(catalogs=["procurement"])
-enriched = enricher.apply(candidates)
-
-# Validate
-EventLogValidator(enriched).report()
 ```
 
-### Generate Demo Data
+---
 
-Run the notebooks in `examples/demo_p2p/` to create synthetic P2P data and see the pipeline end-to-end.
+## Consuming the Event Log
+
+Once the agent builds the event log, consume it with:
+
+### Celonis (via Delta Sharing)
+
+Run `governance/setup_sharing.py` to create a Delta Share. Celonis connects via the sharing protocol — zero-copy, always current, governed.
+
+### pm4py Databricks App
+
+Deploy the interactive process mining dashboard:
+
+```bash
+cd consumers/pm4py-app
+databricks apps create process-mining-dashboard --app-source .
+```
+
+Shows process maps (DFG), variant analysis, bottleneck transitions, conformance checking — all reading from the event log table.
 
 ---
 
 ## Repo Structure
 
 ```
-process-mining-databricks/
+agentic-databricks-event-log-generator/
 │
-├── .claude/skills/discover-event-log/  # Agentic discovery (Claude Code skill)
-│   ├── SKILL.md                        #   4-phase workflow: scan → reason → test → validate
-│   └── references/                     #   YAML schema + process pattern guides
+├── .claude/skills/discover-event-log/  # Claude Code skill
+│   ├── SKILL.md                        #   4-phase agentic workflow
+│   └── references/                     #   YAML schema + process patterns
+│
+├── genie-code/discover-event-log/      # Genie Code skill (same logic)
+│   └── SKILL.md
 │
 ├── eventlog/                           # Python package (pip-installable)
 │   ├── builder.py                      #   YAML config → Spark pipeline → event log
@@ -196,109 +169,54 @@ process-mining-databricks/
 │   ├── validator.py                    #   Event log quality checks
 │   └── schemas.py                      #   Config validation
 │
-├── templates/                          # Pre-built process configs
-│   ├── procure_to_pay.yaml             #   P2P
-│   ├── order_to_cash.yaml              #   O2C
-│   └── incident_management.yaml        #   ITSM
+├── templates/                          # Pre-built YAML configs
+│   ├── procure_to_pay.yaml
+│   ├── order_to_cash.yaml
+│   └── incident_management.yaml
 │
-├── genie-code/                         # Databricks-native path (no Claude Code needed)
-│   ├── discover-event-log/SKILL.md     #   Same skill, runs in Genie Code
-│   └── README.md                       #   Setup instructions
-│
-├── consumers/                          # Pluggable consumers of the event log
-│   ├── pm4py-app/                      #   Interactive PM dashboard (Databricks App)
-│   ├── aibi-dashboard/                 #   Executive KPIs (Lakeview queries)
-│   └── ml-predictions/                 #   SLA breach prediction (AutoML)
-│
-├── notebooks/
-│   └── 02_build_event_log.py           #   Standalone builder notebook
+├── consumers/
+│   └── pm4py-app/                      #   Databricks App (Dash + pm4py + Plotly)
 │
 ├── governance/
-│   └── setup_sharing.py                #   Delta Sharing, table docs, PII tags
+│   └── setup_sharing.py                #   Delta Sharing to Celonis etc.
 │
-├── examples/demo_p2p/                  #   Synthetic P2P data for testing
-│
-├── setup.py                            #   pip install for eventlog package
-├── CLAUDE.md                           #   Repo instructions for Claude Code
-├── blog.md                             #   Companion blog post
+├── examples/demo_p2p/                  #   Synthetic data for testing
+├── notebooks/02_build_event_log.py     #   Standalone builder notebook
+├── setup.py                            #   pip install
+├── setup.sh                            #   One-command setup
+├── CLAUDE.md
+├── blog.md
 └── README.md
 ```
 
-## Components
+## How the Skill Works
 
-### `/discover-event-log` — Agentic Event Log Discovery
+The skill teaches the agent process mining domain knowledge. The agent uses its built-in capabilities (MCP tools for Claude Code, native UC access for Genie Code) for table profiling.
 
-A Claude Code skill that uses Databricks MCP tools iteratively:
+**Phase 1 — Discover:** Profile tables. Classify as event source (timestamps + high-cardinality ID), reference data (IDs, no timestamps), or aggregate (skip).
 
-1. **Scan** — Profiles all tables in a schema with `get_table_details` (schema, row counts, sample values, unique counts, value distributions — all in one call)
-2. **Reason** — Classifies tables as event source / reference / aggregate based on metadata. Identifies case IDs from cardinality patterns.
-3. **Test** — Validates every mapping with real SQL via `execute_sql` before committing
-4. **Build** — Creates the event log with enrichments, checks quality gates, self-corrects if validation fails
+**Phase 2 — Map & Test:** Identify case ID, map timestamp columns to activities, handle snapshot tables by deriving intermediate stages. Test every extraction with real SQL.
 
-Unlike a single LLM call, the agent reads actual data, catches column mismatches, handles join conflicts, and iterates until the event log passes quality checks.
+**Phase 3 — Build & Validate:** UNION ALL extractions + enrichment joins + window functions. Quality gates: no nulls, >=2 activities, >1 event per case. Self-correct if gates fail.
 
-### `eventlog/` — Config-Driven Framework
+**Phase 4 — Report:** Save to Unity Catalog, print summary.
 
-```python
-builder = EventLogBuilder(spark, "templates/procure_to_pay.yaml")
-builder.save()
-# ==================================================
-#   Events:            27,647
-#   Cases:              5,000
-#   Activities:             6
-#   Source tables:           4
-# ==================================================
-```
+## Tested On
 
-**`enricher.py`** scans Unity Catalog for joinable reference tables:
-
-```python
-enricher = EventLogEnricher(spark, event_log_df)
-candidates = enricher.discover(catalogs=["procurement"])
-enriched_df = enricher.apply(candidates)
-```
-
-**`validator.py`** checks event log quality (nulls, duplicates, timestamp ordering, activity cardinality):
-
-```python
-EventLogValidator(event_log_df).report()
-```
-
-### `templates/` — Community Process Configs
-
-| Template | Process | Key Activities |
-|----------|---------|---------------|
-| `procure_to_pay.yaml` | P2P | PR → PO → GR → Invoice → Payment |
-| `order_to_cash.yaml` | O2C | Order → Credit → Pick/Pack/Ship → Invoice → Payment |
-| `incident_management.yaml` | ITSM | Create → Assign → Investigate → Resolve → Close |
-
-**Contributing a template:** Add a YAML file following the schema in `.claude/skills/discover-event-log/references/yaml-schema.md`.
-
-### `consumers/` — Pluggable Event Log Consumers
-
-Once you have an event log table, consume it with any of these:
-
-- **`pm4py-app/`** — Databricks App: interactive process maps, variants, bottlenecks, conformance (Dash + pm4py + Plotly)
-- **`aibi-dashboard/`** — SQL queries for a Lakeview executive dashboard
-- **`ml-predictions/`** — SLA breach predictor comparing process-only vs. enriched features (AutoML)
-- **`governance/setup_sharing.py`** — Delta Share the event log to Celonis or other external tools
-
-## Scaling
-
-- **Builder (Spark):** Billions of raw events, distributed.
-- **Enricher (Spark):** Catalog scanning and joins are distributed.
-- **pm4py (pandas):** Single-node — filter or sample at Spark level before `.toPandas()`.
-- **Delta Sharing:** Zero-copy to external tools.
+| Dataset | Source | Result |
+|---|---|---|
+| `dbdemos.sales_pipeline` | Salesforce-style CRM (snapshot) | 17,734 events, 3,019 cases, 7 activities, enriched with accounts + reps |
+| `process_mining.erp_raw` | Simulated SAP P2P (multi-table) | 27,647 events, 5,000 cases, 6 activities, enriched with suppliers + contracts |
+| `dbdemos.lakehouse_iot` | IoT sensor data | Correctly identified as NOT suitable for process mining (no process stages) |
 
 ## Troubleshooting
 
 | Problem | Solution |
 |---------|----------|
-| `/discover-event-log` not recognized | Make sure you're in the repo directory when running Claude Code |
-| "unknown tool" errors on MCP calls | AI Dev Kit not installed. Run the install script from Step 4 and restart Claude Code |
-| Auth errors from MCP tools | `[DEFAULT]` profile in `~/.databrickscfg` is empty or points to wrong workspace. Run `databricks auth login` |
-| `eventlog` package import errors on cluster | Upload the repo to workspace and `%pip install` from the workspace path |
-| pm4py app shows empty graphs | Check that the app's service principal has `SELECT` on the event log table |
+| `/discover-event-log` not recognized | Make sure you're in the repo directory |
+| MCP tool errors | AI Dev Kit not installed. Run setup.sh |
+| Auth errors | Set `[DEFAULT]` in `~/.databrickscfg` |
+| pm4py app empty | Grant app service principal `SELECT` on event log table |
 
 ## License
 
