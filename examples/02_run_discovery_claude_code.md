@@ -3,80 +3,72 @@
 ## Prerequisites
 
 - Ran `01_create_source_tables.py` on a Databricks cluster
-- Claude Code installed + AI Dev Kit configured (run `./setup.sh` from repo root)
+- Claude Code + AI Dev Kit configured (run `./scripts/setup-claude-code.sh`)
 
-## Steps
-
-### 1. Start Claude Code from the repo directory
+## Run
 
 ```bash
 cd agentic-databricks-event-log-generator
 claude
 ```
 
-### 2. Invoke the skill
-
 ```
 /discover-event-log
 ```
 
-### 3. Tell it what to build
+> Build both a traditional and OCEL event log from process_mining.erp_raw — it's a procure-to-pay process. Use process_mining.reference for enrichment. Save to process_mining.silver.
 
-> Build an event log from process_mining.erp_raw — it's a procure-to-pay process.
-> Include enrichments from process_mining.reference.
-> Save to process_mining.silver.p2p_event_log.
+## What to expect
 
-### 4. What happens
+The skill will:
 
-Claude follows the skill workflow:
+1. **Profile 5 operational + 3 reference tables** via `get_table_details`
 
-**Phase 1 — Discover:**
-Calls `get_table_details("process_mining", "erp_raw")` — gets schema, row counts, samples, cardinality for all 4 tables in one call. Also profiles `process_mining.reference`.
+2. **Classify:**
+   - `purchase_requisitions` → EVENT_SOURCE (pr_id + created_at/approved_at)
+   - `purchase_orders` → EVENT_SOURCE (po_id + created_at/approved_at, links to pr_id + supplier_id + contract_id)
+   - `goods_receipts` → EVENT_SOURCE (gr_id + posting_date, links to po_id)
+   - `invoices` → EVENT_SOURCE (invoice_id + received_date/cleared_date, links to po_id + supplier_id)
+   - `payments` → EVENT_SOURCE (payment_id + payment_date, links to invoice_id + po_id + supplier_id)
+   - `supplier_master` → ENRICHMENT
+   - `contracts` → ENRICHMENT
+   - `cost_centers` → ENRICHMENT
 
-Classifies:
-- `purchase_orders` → EVENT_SOURCE (has `created_at`, `approved_at`, `po_number` with high cardinality)
-- `goods_receipts` → EVENT_SOURCE (has `posting_date`, `po_number`)
-- `invoices` → EVENT_SOURCE (has `received_date`, `cleared_date`, `po_number`)
-- `payments` → EVENT_SOURCE (has `payment_date`, `po_number`)
-- `supplier_master` → ENRICHMENT (has `supplier_id`, no timestamps)
-- `contracts` → ENRICHMENT (has `contract_id`, no timestamps)
+3. **Discover the many-to-many relationships:**
+   - PR → 1-3 POs (split purchases)
+   - PO → 1-3 GRs (partial deliveries)
+   - PO → 1-2 Invoices (split billing)
+   - This is what makes OCEL output valuable
 
-**Phase 2 — Map & Test:**
-- Case ID: `po_number` (appears in all 4 event tables)
-- Maps: `created_at` → "Create Purchase Order", `approved_at` → "Approve Purchase Order" (with IS NOT NULL), etc.
-- Tests each extraction with `execute_sql`
-- Tests enrichment joins: `supplier_id` match rate, `contract_id` match rate
-- Detects and handles any column name conflicts
+4. **Build traditional event log:**
+   - Pick `po_id` as case_id (most central object)
+   - UNION ALL extractions + enrichment joins
+   - ~12 activities, ~15,000+ events
 
-**Phase 3 — Build:**
-- UNION ALL of all extractions + enrichment joins
-- Validates quality gates (no nulls, 6+ activities, ~6 events/case)
-- Creates `process_mining.silver.p2p_event_log`
+5. **Build OCEL tables:**
+   - Events table: one row per event with all attributes
+   - Objects table: unique PRs + POs + GRs + Invoices + Suppliers + Contracts
+   - E2O table: each event links to all objects it touches
 
-**Phase 4 — Report:**
-```
-Event Log Discovery Complete
-================================
-Process:      Procure-to-Pay
-Output:       process_mining.silver.p2p_event_log
-Events:       ~27,000
-Cases:        ~5,000
-Activities:   6 (Create PO → Approve PO → Goods Receipt → Invoice → Clear → Payment)
-Enrichments:  supplier_master (credit risk, delivery rate, country)
-              contracts (amendment count, payment terms)
-```
+6. **Validate both** and report
 
-### 5. Consume the result
+## Comparing the outputs
 
-**Delta Share to Celonis:**
 ```sql
-CREATE SHARE process_mining_share;
-ALTER SHARE process_mining_share ADD TABLE process_mining.silver.p2p_event_log;
-```
+-- Traditional: how many events per PO?
+SELECT case_id, COUNT(*) AS events
+FROM process_mining.silver.traditional_event_log
+GROUP BY case_id ORDER BY events DESC LIMIT 5
 
-**Deploy pm4py app:**
-```bash
-cd consumers/pm4py-app
-# Update app.yaml with your warehouse ID and table name
-databricks apps create process-mining --app-source .
+-- OCEL: how many objects does each event link to?
+SELECT links, COUNT(*) AS events FROM (
+  SELECT event_id, COUNT(*) AS links FROM process_mining.silver.p2p_ocel_e2o GROUP BY event_id
+) GROUP BY links ORDER BY links
+
+-- OCEL: see the full P2P process from a supplier's perspective
+SELECT e.activity, e.event_timestamp, e2o.object_id
+FROM process_mining.silver.p2p_ocel_events e
+JOIN process_mining.silver.p2p_ocel_e2o e2o ON e.event_id = e2o.event_id
+WHERE e2o.object_type = 'Supplier' AND e2o.object_id = 'SUP-0042'
+ORDER BY e.event_timestamp
 ```
