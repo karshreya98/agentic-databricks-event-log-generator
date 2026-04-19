@@ -268,13 +268,31 @@ def update_dashboard(table):
     if df.empty:
         return [], empty, empty, empty, "Info", "No data in selected table.", ""
 
+    # Detect if pm4py formatted (has case:concept:name) or raw columns
+    is_pm4py = "case:concept:name" in df.columns
+    case_col = "case:concept:name" if is_pm4py else ("case_id" if "case_id" in df.columns else "event_id")
+    activity_col = "concept:name" if is_pm4py else "activity"
+
+    # For OCEL events without case_id, use event_id as fallback for KPIs
+    if case_col == "event_id" and "po_number" in df.columns:
+        # Use po_number as a pseudo case_id for OCEL visualization
+        df["case_id"] = df["po_number"]
+        df = pm4py.format_dataframe(df, case_id="case_id", activity_key="activity", timestamp_key="event_timestamp")
+        is_pm4py = True
+        case_col = "case:concept:name"
+        activity_col = "concept:name"
+
     # ── KPIs ──
-    n_cases = df["case:concept:name"].nunique()
+    n_cases = df[case_col].nunique()
     n_events = len(df)
-    n_activities = df["concept:name"].nunique()
-    case_descs = case_statistics.get_cases_description(df)
-    durations_days = pd.Series([c["caseDuration"] / 86400 for c in case_descs.values()])
-    median_dur = durations_days.median()
+    n_activities = df[activity_col].nunique()
+
+    try:
+        case_descs = case_statistics.get_cases_description(df)
+        durations_days = pd.Series([c["caseDuration"] / 86400 for c in case_descs.values()])
+        median_dur = durations_days.median()
+    except Exception:
+        median_dur = 0
 
     kpis = dbc.Row([
         dbc.Col(dbc.Card(dbc.CardBody([
