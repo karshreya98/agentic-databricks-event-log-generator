@@ -152,6 +152,8 @@ Docs: [Delta Sharing with Unity Catalog](https://docs.databricks.com/en/data-sha
 
 **[pm4py](https://pm4py.fit.fraunhofer.de/) Databricks App:**
 
+> **Scope:** the app is a reference implementation for small-to-medium event logs (≲ 200K events). It runs pm4py in a serverless Databricks App. For production-scale workloads, share the event log to a dedicated process mining tool (Celonis, Signavio) via Delta Sharing — those tools are built for it.
+
 **UI-only deploy** (recommended — one notebook does everything):
 
 1. From the Git folder clone, open `scripts/deploy_app` → attach to serverless
