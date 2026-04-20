@@ -14,7 +14,7 @@ Your operational data (SAP, Salesforce, ServiceNow) is already in the lakehouse.
 - **Enrichment beyond the event log** — supplier risk ratings, contract terms, customer data sit alongside the event log. Process mining tools don't have access to this context. The lakehouse does.
 - **Event log as a governed data product** — not locked in a tool. Celonis reads it via Delta Sharing. The pm4py app visualizes it. ML models train on it. Same table, same governance.
 
-This complements tools like Celonis — it automates the hardest part (building the event log) so they can do what they're best at (analysis).
+This complements tools like Celonis — it automates the tedious part (building the event log) so they can do what they're best at (analysis).
 
 ---
 
@@ -44,7 +44,7 @@ The skill teaches the agent **process mining domain knowledge** — table classi
 
 ### Output Formats
 
-**Traditional:** Flat event log with single `case_id`. Ready for Celonis, pm4py, or any standard PM tool.
+**Traditional:** Flat event log with single `case_id`. Ready for Celonis, [pm4py](https://pm4py.fit.fraunhofer.de/), or any standard PM tool.
 
 **OCEL 2.0:** Three tables (events + objects + event-to-object links). Preserves many-to-many relationships (e.g., one PO → multiple invoices → multiple suppliers). Required for object-centric process mining.
 
@@ -143,7 +143,7 @@ ALTER SHARE process_mining_share
 
 Docs: [Delta Sharing with Unity Catalog](https://docs.databricks.com/en/data-sharing/index.html)
 
-**pm4py Databricks App:**
+**[pm4py](https://pm4py.fit.fraunhofer.de/) Databricks App:**
 ```bash
 cd app
 # Edit app.yaml: set DATABRICKS_WAREHOUSE_ID, CATALOG, SCHEMA
