@@ -9,7 +9,9 @@ Visualization uses Plotly (no graphviz dependency).
 """
 
 import os
+import json
 import time
+import urllib.request
 import dash
 from dash import dcc, html, Input, Output, callback
 import dash_bootstrap_components as dbc
@@ -19,7 +21,7 @@ import pandas as pd
 import pm4py
 from pm4py.statistics.traces.generic.pandas import case_statistics
 from databricks.sdk import WorkspaceClient
-from databricks.sdk.service.sql import StatementState
+from databricks.sdk.service.sql import Disposition, Format, StatementState
 
 WAREHOUSE_ID = os.environ.get("DATABRICKS_WAREHOUSE_ID", "")
 CATALOG = os.environ.get("CATALOG", "process_mining")
@@ -33,10 +35,15 @@ w = WorkspaceClient()
 # ── Data Access ──
 
 def query(sql: str) -> pd.DataFrame:
+    """Execute SQL via statement execution API using EXTERNAL_LINKS disposition so
+    results larger than the 25MB inline cap stream via presigned URL chunks."""
     response = w.statement_execution.execute_statement(
-        warehouse_id=WAREHOUSE_ID, statement=sql, wait_timeout="50s",
+        warehouse_id=WAREHOUSE_ID,
+        statement=sql,
+        disposition=Disposition.EXTERNAL_LINKS,
+        format=Format.JSON_ARRAY,
+        wait_timeout="50s",
     )
-    # Poll until terminal state (SUCCEEDED / FAILED / CANCELED / CLOSED)
     while response.status.state in (StatementState.PENDING, StatementState.RUNNING):
         time.sleep(2)
         response = w.statement_execution.get_statement(response.statement_id)
@@ -47,7 +54,19 @@ def query(sql: str) -> pd.DataFrame:
         raise Exception(f"Query failed: {msg}")
 
     columns = [col.name for col in response.manifest.schema.columns]
-    rows = response.result.data_array if response.result and response.result.data_array else []
+    total_chunks = response.manifest.total_chunk_count or 1
+    rows: list = []
+
+    for i in range(total_chunks):
+        chunk = response.result if i == 0 else w.statement_execution.get_statement_result_chunk_n(
+            statement_id=response.statement_id, chunk_index=i,
+        )
+        if not chunk or not chunk.external_links:
+            continue
+        for link in chunk.external_links:
+            with urllib.request.urlopen(link.external_link) as r:
+                rows.extend(json.loads(r.read()))
+
     return pd.DataFrame(rows, columns=columns)
 
 
