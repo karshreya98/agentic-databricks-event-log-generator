@@ -92,28 +92,39 @@ def discover_tables() -> list[dict]:
     return tables
 
 
-def load_event_log(table: str) -> pd.DataFrame:
+def list_object_types(table: str) -> pd.DataFrame:
+    """Return object_type / count for an OCEL events table, ordered by count desc."""
+    base = table.replace("_ocel_events", "")
+    e2o = f"{base}_ocel_e2o"
+    return query(
+        f"SELECT object_type, COUNT(*) AS cnt FROM {e2o} "
+        f"GROUP BY object_type ORDER BY cnt DESC"
+    )
+
+
+def load_event_log(table: str, perspective: str | None = None) -> pd.DataFrame:
     """Load events into a pm4py-ready dataframe.
 
-    For OCEL events tables (no `case_id`), join to the e2o bridge using the
-    most-populated object type as a synthetic `case_id` — this gives pm4py
-    a perspective to build a process map from.
+    For OCEL events tables (no `case_id`), join to the e2o bridge using
+    `perspective` as the object_type (or the most-populated one if not given).
+    The chosen object's id becomes the synthetic `case_id`.
     """
     if "ocel_events" in table:
         base = table.replace("_ocel_events", "")
         e2o = f"{base}_ocel_e2o"
-        sql = f"""
-            WITH primary_type AS (
-              SELECT object_type
-              FROM {e2o}
-              GROUP BY object_type
-              ORDER BY COUNT(*) DESC
-              LIMIT 1
+        if perspective:
+            escaped = perspective.replace("'", "''")
+            object_type_filter = f"'{escaped}'"
+        else:
+            object_type_filter = (
+                f"(SELECT object_type FROM {e2o} "
+                f"GROUP BY object_type ORDER BY COUNT(*) DESC LIMIT 1)"
             )
+        sql = f"""
             SELECT e.*, o.object_id AS case_id
             FROM {table} e
             JOIN {e2o} o ON e.event_id = o.event_id
-            WHERE o.object_type = (SELECT object_type FROM primary_type)
+            WHERE o.object_type = {object_type_filter}
         """
         df = query(sql)
     else:
@@ -239,6 +250,17 @@ app.layout = dbc.Container([
         dbc.Col(dcc.Dropdown(id="table-selector", placeholder="Select event log table..."), width=6),
     ], className="my-3"),
 
+    # OCEL perspective row — only visible when an OCEL events table is selected
+    dbc.Row(
+        [
+            dbc.Col(html.Label("View process from perspective of:"), width="auto", className="pt-1"),
+            dbc.Col(dcc.Dropdown(id="perspective-selector", placeholder="Object type..."), width=4),
+        ],
+        id="perspective-row",
+        className="mb-3 align-items-center",
+        style={"display": "none"},
+    ),
+
     # KPI row
     dbc.Row(id="kpi-cards", className="mb-3"),
 
@@ -291,6 +313,31 @@ def populate_tables(_):
 
 
 @callback(
+    Output("perspective-selector", "options"),
+    Output("perspective-selector", "value"),
+    Output("perspective-row", "style"),
+    Input("table-selector", "value"),
+)
+def populate_perspectives(table):
+    """Show & populate the perspective dropdown only for OCEL events tables."""
+    hidden = {"display": "none"}
+    visible = {"display": "flex"}
+    if not table or "ocel_events" not in table:
+        return [], None, hidden
+    try:
+        df = list_object_types(table)
+    except Exception:
+        return [], None, hidden
+    if df.empty:
+        return [], None, hidden
+    options = [
+        {"label": f"{r.object_type}  ({int(r.cnt):,} links)", "value": r.object_type}
+        for _, r in df.iterrows()
+    ]
+    return options, options[0]["value"], visible
+
+
+@callback(
     Output("kpi-cards", "children"),
     Output("process-map", "figure"),
     Output("variant-chart", "figure"),
@@ -299,13 +346,14 @@ def populate_tables(_):
     Output("right-panel-content", "children"),
     Output("conformance-results", "children"),
     Input("table-selector", "value"),
+    Input("perspective-selector", "value"),
 )
-def update_dashboard(table):
+def update_dashboard(table, perspective):
     empty = go.Figure().add_annotation(text="Select a table", showarrow=False)
     if not table:
         return [], empty, empty, empty, "Info", "Select an event log table above.", ""
 
-    df = load_event_log(table)
+    df = load_event_log(table, perspective=perspective)
     if df.empty:
         return [], empty, empty, empty, "Info", "No data in selected table.", ""
 
