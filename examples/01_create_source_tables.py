@@ -35,15 +35,17 @@
 # COMMAND ----------
 
 dbutils.widgets.text("catalog", "process_mining", "Target catalog")
+
+# COMMAND ----------
+
 CATALOG = dbutils.widgets.get("catalog").strip()
 assert CATALOG, "Set the 'catalog' widget."
 print(f"Target catalog: {CATALOG}")
 
-# Try to create the catalog (no-op if it already exists; errors if you lack CREATE CATALOG)
 try:
     spark.sql(f"CREATE CATALOG IF NOT EXISTS {CATALOG}")
-except Exception as e:
-    print(f"Skipping catalog create — assuming {CATALOG} already exists. ({e})")
+except Exception:
+    pass
 
 spark.sql(f"CREATE SCHEMA IF NOT EXISTS {CATALOG}.erp_raw")
 spark.sql(f"CREATE SCHEMA IF NOT EXISTS {CATALOG}.reference")
