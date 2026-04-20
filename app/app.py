@@ -52,6 +52,8 @@ def query(sql: str) -> pd.DataFrame:
         server_hostname=hostname,
         http_path=f"/sql/1.0/warehouses/{WAREHOUSE_ID}",
         access_token=_token(),
+        # Databricks Apps can't egress to S3 — force inline Thrift results
+        use_cloud_fetch=False,
     ) as conn:
         with conn.cursor() as cur:
             cur.execute(sql)
