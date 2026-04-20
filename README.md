@@ -1,8 +1,8 @@
 # Agentic Event Log Generator for Databricks
 
-An AI-powered toolkit that discovers, builds, and enriches process mining event logs from any tables in Unity Catalog.
+An AI-powered toolkit that discovers, builds, and enriches process mining event logs from **Unity Catalog-governed tables** in your Databricks lakehouse.
 
-**Point an agent at your catalog. It scans, reasons, tests, and builds a governed, enriched event log.**
+**Point an agent at your catalog. It reads Unity Catalog metadata — schemas, column stats, tags, and lineage — tests mappings with Databricks SQL, and writes a governed Delta event log back to UC.**
 
 Companion blog: [Process Mining on Databricks: From Event Logs to Operational Intelligence](blog.md)
 
@@ -112,11 +112,36 @@ The synthetic data includes:
 
 ## Consuming the Event Log
 
-**Celonis / Signavio (Delta Sharing):**
+**Celonis / Signavio (Delta Sharing)**
+
+Prerequisites:
+- Delta Sharing is enabled on your Unity Catalog metastore (metastore admin)
+- You have `CREATE SHARE` on the metastore and `SELECT` + `USE CATALOG` / `USE SCHEMA` on the event log
+- A Delta Sharing recipient exists for the consumer (Celonis, Signavio, or an external partner). Create one with `CREATE RECIPIENT <name>` or via the Catalog Explorer UI
+- The event log table is stored in a Unity Catalog-managed location (external tables also work, but managed is simpler for sharing)
+
+Share a traditional (single-table) event log:
+
 ```sql
 CREATE SHARE process_mining_share;
-ALTER SHARE process_mining_share ADD TABLE my_catalog.silver.event_log;
+
+ALTER SHARE process_mining_share
+  ADD TABLE my_catalog.silver.event_log;
+
+GRANT SELECT ON SHARE process_mining_share
+  TO RECIPIENT celonis_recipient;
 ```
+
+Share an OCEL 2.0 event log (all three tables):
+
+```sql
+ALTER SHARE process_mining_share
+  ADD TABLE my_catalog.silver.event_log_ocel_events,
+  ADD TABLE my_catalog.silver.event_log_ocel_objects,
+  ADD TABLE my_catalog.silver.event_log_ocel_e2o;
+```
+
+Docs: [Delta Sharing with Unity Catalog](https://docs.databricks.com/en/data-sharing/index.html)
 
 **pm4py Databricks App:**
 ```bash
