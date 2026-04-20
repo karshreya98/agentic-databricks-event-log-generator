@@ -93,8 +93,32 @@ def discover_tables() -> list[dict]:
 
 
 def load_event_log(table: str) -> pd.DataFrame:
-    # SELECT * so we adapt to whatever mandatory + optional columns the skill emitted.
-    df = query(f"SELECT * FROM {table}")
+    """Load events into a pm4py-ready dataframe.
+
+    For OCEL events tables (no `case_id`), join to the e2o bridge using the
+    most-populated object type as a synthetic `case_id` — this gives pm4py
+    a perspective to build a process map from.
+    """
+    if "ocel_events" in table:
+        base = table.replace("_ocel_events", "")
+        e2o = f"{base}_ocel_e2o"
+        sql = f"""
+            WITH primary_type AS (
+              SELECT object_type
+              FROM {e2o}
+              GROUP BY object_type
+              ORDER BY COUNT(*) DESC
+              LIMIT 1
+            )
+            SELECT e.*, o.object_id AS case_id
+            FROM {table} e
+            JOIN {e2o} o ON e.event_id = o.event_id
+            WHERE o.object_type = (SELECT object_type FROM primary_type)
+        """
+        df = query(sql)
+    else:
+        df = query(f"SELECT * FROM {table}")
+
     if df.empty:
         return df
 
@@ -285,19 +309,11 @@ def update_dashboard(table):
     if df.empty:
         return [], empty, empty, empty, "Info", "No data in selected table.", ""
 
-    # Detect if pm4py formatted (has case:concept:name) or raw columns
+    # load_event_log returns a pm4py-formatted df (case:concept:name / concept:name)
+    # for both traditional and OCEL inputs. Anything still missing case_id is unusable.
     is_pm4py = "case:concept:name" in df.columns
-    case_col = "case:concept:name" if is_pm4py else ("case_id" if "case_id" in df.columns else "event_id")
+    case_col = "case:concept:name" if is_pm4py else "case_id"
     activity_col = "concept:name" if is_pm4py else "activity"
-
-    # For OCEL events without case_id, use event_id as fallback for KPIs
-    if case_col == "event_id" and "po_number" in df.columns:
-        # Use po_number as a pseudo case_id for OCEL visualization
-        df["case_id"] = df["po_number"]
-        df = pm4py.format_dataframe(df, case_id="case_id", activity_key="activity", timestamp_key="event_timestamp")
-        is_pm4py = True
-        case_col = "case:concept:name"
-        activity_col = "concept:name"
 
     # ── KPIs ──
     n_cases = df[case_col].nunique()
