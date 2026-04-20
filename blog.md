@@ -14,9 +14,9 @@ The question was never "can Databricks do process mining." It was "why would you
 
 ---
 
-## Process Mining Tools Are Great — And They Agree
+## Enterprise Process Mining Tools Are Great — And They Agree
 
-Celonis, Signavio, UiPath Process Mining — they're excellent at what they do: process discovery, conformance checking, visualization, action recommendations, and increasingly their own AI capabilities. They've invested years in these features and they do them well.
+Enterprise process mining tools — Celonis, SAP Signavio, UiPath Process Mining — are excellent at what they do: process discovery, conformance checking, visualization, action recommendations, and increasingly their own AI capabilities. They've invested years in these features and they do them well.
 
 Celonis has a [strategic partnership with Databricks](https://www.celonis.com/news/press/celonis-partners-with-databricks-to-power-enterprise-ai-that-continuously-improves-business-operations) built on Delta Sharing. Signavio and UiPath support similar integrations. These tools *want* to read from a governed data platform rather than maintain their own extraction pipelines. The industry is converging on the idea that the data platform is the foundation and the process mining tool is the analytical layer on top.
 
@@ -113,7 +113,7 @@ OCEL:         "Create PO" links to PurchaseOrder: PO-001
                                     Contract: CTR-010
 ```
 
-The toolkit generates both formats. Celonis and pm4py both support OCEL.
+The toolkit generates traditional output by default. If the agent detects multiple object types per event, it asks at a checkpoint whether to also build OCEL — opt-in, not automatic. Both Celonis and pm4py support OCEL on the consumption side.
 
 ---
 
@@ -138,6 +138,8 @@ The recipient configures the connection on their side:
 ### Exploration (pm4py Databricks App)
 
 For teams exploring process mining without an enterprise tool, the toolkit includes a Databricks App built with [pm4py](https://github.com/process-intelligence-solutions/pm4py) — the leading open-source process mining library. It provides interactive process maps, variant analysis, bottleneck detection, and conformance checking. The app auto-discovers all event log tables in the catalog and supports both traditional and OCEL formats.
+
+**Scope:** the app is a reference implementation suited for small-to-medium event logs (≲ 200K events). For production-scale workloads, share the event log to an enterprise process mining tool via Delta Sharing — those tools are built for it.
 
 **Note on pm4py licensing:** pm4py is licensed under AGPL-3.0, which requires derivative works to be open-sourced. This is fine for internal exploration, POCs, and research. For commercial or production use, evaluate the licensing implications or use an enterprise tool like Celonis instead.
 
