@@ -6,3 +6,6 @@ dist/
 build/
 .env
 .venv/
+
+# Blog draft — published to Medium, not tracked here
+blog.md
