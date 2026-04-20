@@ -33,8 +33,7 @@ w = WorkspaceClient()
 
 def _token() -> str:
     """Get a fresh bearer token from the app's service principal credentials."""
-    headers: dict = {}
-    w.config.authenticate(headers)
+    headers = w.config.authenticate() or {}
     return headers.get("Authorization", "").replace("Bearer ", "")
 
 
