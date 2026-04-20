@@ -16,6 +16,16 @@
 
 # COMMAND ----------
 
+# MAGIC %md
+# MAGIC ## Ensure a recent `databricks-sdk` (Apps API support)
+
+# COMMAND ----------
+
+# MAGIC %pip install --upgrade --quiet "databricks-sdk>=0.30.0"
+# MAGIC dbutils.library.restartPython()
+
+# COMMAND ----------
+
 dbutils.widgets.text("warehouse_id", "", "SQL Warehouse ID (required)")
 dbutils.widgets.text("catalog", "process_mining", "Catalog")
 dbutils.widgets.text("schema", "silver", "Schema")
