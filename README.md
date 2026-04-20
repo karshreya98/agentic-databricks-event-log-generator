@@ -21,7 +21,7 @@ This complements tools like Celonis — it automates the tedious part (building 
 ## How It Works
 
 ```
-You: "Build an event log from my_catalog.erp_schema — it's a procure-to-pay process"
+You: "Build event logs from tables in my_catalog"
 
 Agent:
   Phase 1 — DISCOVER    Profiles tables using UC metadata.
@@ -73,7 +73,7 @@ claude                             # start Claude Code from repo directory
 /discover-event-log                # invoke the skill
 ```
 
-> "Build an event log from my_catalog.my_schema — it's a procure-to-pay process. Include OCEL output."
+> "Build event logs from tables in my_catalog. Include OCEL output."
 
 ### Option B: Genie Code
 
@@ -87,7 +87,7 @@ cd agentic-databricks-event-log-generator
 
 Open Genie Code (Agent mode):
 
-> @discover-event-log Build an event log from my_catalog.my_schema — it's a sales pipeline process
+> @discover-event-log Build event logs from tables in my_catalog
 
 Same skill, same logic, same output. See [`scripts/install-genie-code.sh`](scripts/install-genie-code.sh) for profile options.
 
