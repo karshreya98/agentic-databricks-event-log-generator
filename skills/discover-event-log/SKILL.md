@@ -148,17 +148,23 @@ Enrichments:
   contracts              contract_id       88%          contract_type, amendment_count, payment_terms_days
 
 Format: Traditional (single case_id)
-       + OCEL 2.0 (if multiple object types detected)
 ```
 
 Then ask: **"Does this look right? Any mappings to change, add, or remove before I build?"**
 
+**If you detected multiple object types linking to each event** (e.g. events relate to both `PurchaseOrder` and `Invoice` and `Supplier`), also ask:
+
+> "I noticed events link to multiple object types: `PurchaseOrder`, `Invoice`, `Supplier`. Do you want me to also build **OCEL 2.0 output** (3 extra tables that preserve all object relationships, for object-centric process mining)? (yes / no — default: no)"
+
+Do **not** build OCEL unless the user explicitly opts in. Most users only need the traditional event log; OCEL adds 3 extra tables that most PM tools don't consume.
+
 **Wait for the user to confirm.** If they say:
-- "yes" / "looks good" → proceed to Phase 3
+- "yes" / "looks good" → proceed to Phase 3 (traditional only, unless OCEL was explicitly requested)
 - "change X" → adjust the mapping and re-show
 - "remove the enrichment from contracts" → drop it
 - "add department from the cost_centers table" → add it
 - "that's not the right case ID" → go back to Phase 2
+- "yes, and build OCEL too" → proceed to Phase 3 + Phase 3b
 
 This is the human-in-the-loop checkpoint. The agent proposes, the user validates.
 
@@ -252,15 +258,17 @@ HAVING COUNT(*) > 1;
 
 ---
 
-## Phase 3b: OCEL Output (Object-Centric, optional)
+## Phase 3b: OCEL Output (Object-Centric, opt-in only)
 
-If the user requests OCEL output, or if the data naturally has multiple object types per event, generate an **OCEL 2.0** output alongside the traditional event log.
+**Only run this phase if the user explicitly opted in** at the Phase 2 checkpoint (or at the start of the request: "include OCEL", "object-centric", "OCEL 2.0"). If they said no or didn't answer the OCEL question, skip this phase.
 
-### When to suggest OCEL
+### When to offer OCEL at the Phase 2 checkpoint
 
+Offer OCEL as an opt-in question only if all of the following are true:
 - Multiple ID columns exist in the event data (e.g., `po_number`, `invoice_id`, `supplier_id`)
 - Events naturally relate to more than one object (e.g., a goods receipt relates to both a PO and a supplier)
-- The user mentions "object-centric", "OCEL", or "multi-object"
+
+If there's only one object type per event, don't even mention OCEL — it adds no value.
 
 ### OCEL 2.0 Schema (3 tables)
 
