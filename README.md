@@ -144,11 +144,22 @@ ALTER SHARE process_mining_share
 Docs: [Delta Sharing with Unity Catalog](https://docs.databricks.com/en/data-sharing/index.html)
 
 **[pm4py](https://pm4py.fit.fraunhofer.de/) Databricks App:**
-```bash
-cd app
-# Edit app.yaml: set DATABRICKS_WAREHOUSE_ID, CATALOG, SCHEMA
-databricks apps create process-mining-dashboard --app-source .
-```
+
+1. Edit `app/app.yaml` — set `DATABRICKS_WAREHOUSE_ID`, `CATALOG`, `SCHEMA`.
+2. Sync the source to your workspace:
+
+   ```bash
+   databricks sync app /Workspace/Users/<you>@databricks.com/process-mining-dashboard
+   ```
+
+3. Create the app (one-time) and deploy the synced code:
+
+   ```bash
+   databricks apps create process-mining-dashboard
+
+   databricks apps deploy process-mining-dashboard \
+     --source-code-path /Workspace/Users/<you>@databricks.com/process-mining-dashboard
+   ```
 
 The app auto-discovers all event log tables in the configured catalog/schema. Supports both traditional and OCEL tables — OCEL tables show object type breakdown and links-per-event stats alongside the standard process map.
 
