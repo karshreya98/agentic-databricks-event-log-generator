@@ -79,17 +79,24 @@ claude                             # start Claude Code from repo directory
 
 No external dependencies. Runs inside Databricks on FMAPI.
 
+**UI-only install** (recommended — no local CLI needed):
+
+1. In your Databricks workspace → **Workspace** → **Create** → **Git folder** → paste `https://github.com/karshreya98/agentic-databricks-event-log-generator`
+2. Open the cloned folder → `scripts/install_skill_genie` → attach to serverless → **Run all**
+
+**CLI install** (alternative, from a local clone):
+
 ```bash
 git clone https://github.com/karshreya98/agentic-databricks-event-log-generator.git
 cd agentic-databricks-event-log-generator
-./scripts/install-genie-code.sh    # copies skill to your workspace
+./scripts/install-genie-code.sh --profile <your-profile>
 ```
 
-Open Genie Code (Agent mode):
+Either way, open Genie Code (Agent mode) in any workspace notebook:
 
 > @discover-event-log Build event logs from tables in my_catalog
 
-Same skill, same logic, same output. See [`scripts/install-genie-code.sh`](scripts/install-genie-code.sh) for profile options.
+Same skill, same logic, same output.
 
 ---
 
@@ -145,6 +152,15 @@ Docs: [Delta Sharing with Unity Catalog](https://docs.databricks.com/en/data-sha
 
 **[pm4py](https://pm4py.fit.fraunhofer.de/) Databricks App:**
 
+**UI-only deploy** (recommended — one notebook does everything):
+
+1. From the Git folder clone, open `scripts/deploy_app` → attach to serverless
+2. Fill in the widgets (SQL Warehouse ID, catalog, schema, app name) → **Run all**
+
+The notebook writes `app/app.yaml`, creates the app, deploys the source from `app/`, grants the app's service principal access to the catalog / schema / warehouse, and prints the app URL.
+
+**CLI deploy** (alternative):
+
 1. Edit `app/app.yaml` — set `DATABRICKS_WAREHOUSE_ID`, `CATALOG`, `SCHEMA`.
 2. Sync the source to your workspace:
 
@@ -160,6 +176,8 @@ Docs: [Delta Sharing with Unity Catalog](https://docs.databricks.com/en/data-sha
    databricks apps deploy process-mining-dashboard \
      --source-code-path /Workspace/Users/<you>@databricks.com/process-mining-dashboard
    ```
+
+4. Grant the app's service principal `USE CATALOG` + `USE SCHEMA` + `SELECT` on the event log schema, and `CAN USE` on the warehouse.
 
 The app auto-discovers all event log tables in the configured catalog/schema. Supports both traditional and OCEL tables — OCEL tables show object type breakdown and links-per-event stats alongside the standard process map.
 
@@ -179,7 +197,9 @@ agentic-databricks-event-log-generator/
 │
 ├── scripts/
 │   ├── setup-claude-code.sh            #   One-command Claude Code setup
-│   └── install-genie-code.sh           #   One-command Genie Code install
+│   ├── install-genie-code.sh           #   One-command Genie Code install (CLI)
+│   ├── install_skill_genie.py          #   Notebook: install skill into workspace (UI)
+│   └── deploy_app.py                   #   Notebook: create + deploy + grant perms (UI)
 │
 ├── app/                                # pm4py Databricks App
 │   ├── app.py                          #   Multi-table dashboard with OCEL support
