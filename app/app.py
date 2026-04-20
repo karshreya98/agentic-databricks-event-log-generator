@@ -9,6 +9,7 @@ Visualization uses Plotly (no graphviz dependency).
 """
 
 import os
+import time
 import dash
 from dash import dcc, html, Input, Output, callback
 import dash_bootstrap_components as dbc
@@ -33,10 +34,18 @@ w = WorkspaceClient()
 
 def query(sql: str) -> pd.DataFrame:
     response = w.statement_execution.execute_statement(
-        warehouse_id=WAREHOUSE_ID, statement=sql,
+        warehouse_id=WAREHOUSE_ID, statement=sql, wait_timeout="50s",
     )
+    # Poll until terminal state (SUCCEEDED / FAILED / CANCELED / CLOSED)
+    while response.status.state in (StatementState.PENDING, StatementState.RUNNING):
+        time.sleep(2)
+        response = w.statement_execution.get_statement(response.statement_id)
+
     if response.status.state != StatementState.SUCCEEDED:
-        raise Exception(f"Query failed: {response.status.error}")
+        err = response.status.error
+        msg = err.message if err else f"terminal state={response.status.state}"
+        raise Exception(f"Query failed: {msg}")
+
     columns = [col.name for col in response.manifest.schema.columns]
     rows = response.result.data_array if response.result and response.result.data_array else []
     return pd.DataFrame(rows, columns=columns)
@@ -70,28 +79,22 @@ def discover_tables() -> list[dict]:
 
 
 def load_event_log(table: str) -> pd.DataFrame:
-    sql = f"""
-        SELECT case_id, activity, event_timestamp,
-               resource, cost, time_since_prev_seconds, event_rank
-        FROM {table}
-        ORDER BY case_id, event_timestamp
-    """
-    try:
-        df = query(sql)
-    except Exception:
-        # OCEL events table may not have all columns
-        sql = f"SELECT * FROM {table} ORDER BY event_timestamp"
-        df = query(sql)
-
+    # SELECT * so we adapt to whatever mandatory + optional columns the skill emitted.
+    df = query(f"SELECT * FROM {table}")
     if df.empty:
         return df
 
-    df["event_timestamp"] = pd.to_datetime(df["event_timestamp"])
-    for col in ["cost", "time_since_prev_seconds", "event_rank"]:
+    if "event_timestamp" in df.columns:
+        df["event_timestamp"] = pd.to_datetime(df["event_timestamp"])
+        sort_keys = [c for c in ("case_id", "event_timestamp") if c in df.columns]
+        if sort_keys:
+            df = df.sort_values(sort_keys).reset_index(drop=True)
+
+    for col in ("cost", "time_since_prev_seconds", "event_rank"):
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
-    if "case_id" in df.columns and "activity" in df.columns:
+    if all(c in df.columns for c in ("case_id", "activity", "event_timestamp")):
         return pm4py.format_dataframe(
             df, case_id="case_id", activity_key="activity", timestamp_key="event_timestamp",
         )
