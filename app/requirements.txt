@@ -4,3 +4,4 @@ plotly>=5.18.0
 pm4py>=2.7.0
 pandas
 databricks-sdk
+databricks-sql-connector>=3.0.0

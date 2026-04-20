@@ -9,9 +9,6 @@ Visualization uses Plotly (no graphviz dependency).
 """
 
 import os
-import json
-import time
-import urllib.request
 import dash
 from dash import dcc, html, Input, Output, callback
 import dash_bootstrap_components as dbc
@@ -21,7 +18,7 @@ import pandas as pd
 import pm4py
 from pm4py.statistics.traces.generic.pandas import case_statistics
 from databricks.sdk import WorkspaceClient
-from databricks.sdk.service.sql import Disposition, Format, StatementState
+from databricks import sql as db_sql
 
 WAREHOUSE_ID = os.environ.get("DATABRICKS_WAREHOUSE_ID", "")
 CATALOG = os.environ.get("CATALOG", "process_mining")
@@ -34,40 +31,37 @@ w = WorkspaceClient()
 
 # ── Data Access ──
 
+def _token() -> str:
+    """Get a fresh bearer token from the app's service principal credentials."""
+    headers: dict = {}
+    w.config.authenticate(headers)
+    return headers.get("Authorization", "").replace("Bearer ", "")
+
+
 def query(sql: str) -> pd.DataFrame:
-    """Execute SQL via statement execution API using EXTERNAL_LINKS disposition so
-    results larger than the 25MB inline cap stream via presigned URL chunks."""
-    response = w.statement_execution.execute_statement(
-        warehouse_id=WAREHOUSE_ID,
-        statement=sql,
-        disposition=Disposition.EXTERNAL_LINKS,
-        format=Format.JSON_ARRAY,
-        wait_timeout="50s",
-    )
-    while response.status.state in (StatementState.PENDING, StatementState.RUNNING):
-        time.sleep(2)
-        response = w.statement_execution.get_statement(response.statement_id)
+    """Run SQL against the configured warehouse via databricks-sql-connector.
 
-    if response.status.state != StatementState.SUCCEEDED:
-        err = response.status.error
-        msg = err.message if err else f"terminal state={response.status.state}"
-        raise Exception(f"Query failed: {msg}")
-
-    columns = [col.name for col in response.manifest.schema.columns]
-    total_chunks = response.manifest.total_chunk_count or 1
-    rows: list = []
-
-    for i in range(total_chunks):
-        chunk = response.result if i == 0 else w.statement_execution.get_statement_result_chunk_n(
-            statement_id=response.statement_id, chunk_index=i,
-        )
-        if not chunk or not chunk.external_links:
-            continue
-        for link in chunk.external_links:
-            with urllib.request.urlopen(link.external_link) as r:
-                rows.extend(json.loads(r.read()))
-
-    return pd.DataFrame(rows, columns=columns)
+    Using the SQL connector (native Databricks protocol) instead of the Statement
+    Execution API avoids two issues in Databricks Apps:
+      1. 25MB inline-result cap (we'd otherwise need EXTERNAL_LINKS)
+      2. Restricted app egress blocks presigned S3 URLs that EXTERNAL_LINKS returns
+    The SQL connector streams results through the workspace endpoint, which is
+    already allowlisted from the app's network.
+    """
+    hostname = w.config.host.replace("https://", "").replace("http://", "").rstrip("/")
+    with db_sql.connect(
+        server_hostname=hostname,
+        http_path=f"/sql/1.0/warehouses/{WAREHOUSE_ID}",
+        access_token=_token(),
+    ) as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql)
+            try:
+                return cur.fetchall_arrow().to_pandas()
+            except Exception:
+                rows = cur.fetchall()
+                columns = [desc[0] for desc in cur.description] if cur.description else []
+                return pd.DataFrame(rows, columns=columns)
 
 
 def discover_tables() -> list[dict]:
