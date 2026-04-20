@@ -25,11 +25,30 @@
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC CREATE CATALOG IF NOT EXISTS process_mining;
-# MAGIC CREATE SCHEMA IF NOT EXISTS process_mining.erp_raw;
-# MAGIC CREATE SCHEMA IF NOT EXISTS process_mining.reference;
-# MAGIC CREATE SCHEMA IF NOT EXISTS process_mining.silver;
+# MAGIC %md
+# MAGIC ## Configure target catalog
+# MAGIC
+# MAGIC Set the catalog to write into. Schemas (`erp_raw`, `reference`, `silver`) are
+# MAGIC created under it. You need `CREATE SCHEMA` on the catalog — and `CREATE CATALOG`
+# MAGIC on the metastore if the catalog doesn't exist yet.
+
+# COMMAND ----------
+
+dbutils.widgets.text("catalog", "process_mining", "Target catalog")
+CATALOG = dbutils.widgets.get("catalog").strip()
+assert CATALOG, "Set the 'catalog' widget."
+print(f"Target catalog: {CATALOG}")
+
+# Try to create the catalog (no-op if it already exists; errors if you lack CREATE CATALOG)
+try:
+    spark.sql(f"CREATE CATALOG IF NOT EXISTS {CATALOG}")
+except Exception as e:
+    print(f"Skipping catalog create — assuming {CATALOG} already exists. ({e})")
+
+spark.sql(f"CREATE SCHEMA IF NOT EXISTS {CATALOG}.erp_raw")
+spark.sql(f"CREATE SCHEMA IF NOT EXISTS {CATALOG}.reference")
+spark.sql(f"CREATE SCHEMA IF NOT EXISTS {CATALOG}.silver")
+print(f"Schemas ready: {CATALOG}.{{erp_raw, reference, silver}}")
 
 # COMMAND ----------
 
@@ -253,11 +272,11 @@ print(f"  Payments:  {len(payments):,}")
 
 # COMMAND ----------
 
-spark.createDataFrame(prs).write.mode("overwrite").saveAsTable("process_mining.erp_raw.purchase_requisitions")
-spark.createDataFrame(pos).write.mode("overwrite").saveAsTable("process_mining.erp_raw.purchase_orders")
-spark.createDataFrame(grs).write.mode("overwrite").saveAsTable("process_mining.erp_raw.goods_receipts")
-spark.createDataFrame(invoices).write.mode("overwrite").saveAsTable("process_mining.erp_raw.invoices")
-spark.createDataFrame(payments).write.mode("overwrite").saveAsTable("process_mining.erp_raw.payments")
+spark.createDataFrame(prs).write.mode("overwrite").saveAsTable(f"{CATALOG}.erp_raw.purchase_requisitions")
+spark.createDataFrame(pos).write.mode("overwrite").saveAsTable(f"{CATALOG}.erp_raw.purchase_orders")
+spark.createDataFrame(grs).write.mode("overwrite").saveAsTable(f"{CATALOG}.erp_raw.goods_receipts")
+spark.createDataFrame(invoices).write.mode("overwrite").saveAsTable(f"{CATALOG}.erp_raw.invoices")
+spark.createDataFrame(payments).write.mode("overwrite").saveAsTable(f"{CATALOG}.erp_raw.payments")
 
 print("Operational tables written.")
 
@@ -293,9 +312,9 @@ cost_centers = [{
     "region": random.choice(["AMER", "EMEA", "APAC", "LATAM"]),
 } for i in range(100, 200)]
 
-spark.createDataFrame(suppliers).write.mode("overwrite").saveAsTable("process_mining.reference.supplier_master")
-spark.createDataFrame(contracts).write.mode("overwrite").saveAsTable("process_mining.reference.contracts")
-spark.createDataFrame(cost_centers).write.mode("overwrite").saveAsTable("process_mining.reference.cost_centers")
+spark.createDataFrame(suppliers).write.mode("overwrite").saveAsTable(f"{CATALOG}.reference.supplier_master")
+spark.createDataFrame(contracts).write.mode("overwrite").saveAsTable(f"{CATALOG}.reference.contracts")
+spark.createDataFrame(cost_centers).write.mode("overwrite").saveAsTable(f"{CATALOG}.reference.cost_centers")
 
 print("Reference tables written.")
 
@@ -324,10 +343,11 @@ print("Reference tables written.")
 # MAGIC   Invoice → 0-1 Payment (uncleared = no payment)
 # MAGIC ```
 # MAGIC
-# MAGIC **Next:** Run the agentic skill:
+# MAGIC **Next:** Run the agentic skill against the catalog you just populated.
 # MAGIC
-# MAGIC Claude Code: `/discover-event-log "Build event log from process_mining.erp_raw — P2P process"`
+# MAGIC Claude Code: `/discover-event-log "Build event logs from tables in <CATALOG>"`
 # MAGIC
-# MAGIC Genie Code: `@discover-event-log Build event log from process_mining.erp_raw — P2P process`
+# MAGIC Genie Code: `@discover-event-log Build event logs from tables in <CATALOG>`
 # MAGIC
-# MAGIC Ask for both traditional and OCEL output to compare.
+# MAGIC Replace `<CATALOG>` with whatever you set the `catalog` widget to.
+# MAGIC The skill will ask whether to also produce OCEL output if it detects multi-object data.
