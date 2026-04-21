@@ -60,9 +60,9 @@ The skill teaches the agent **process mining domain knowledge** — table classi
 
 ## Getting Started
 
-### Option A: Claude Code
+### Option A: Claude Code + [Databricks AI Dev Kit](https://github.com/databricks-solutions/ai-dev-kit)
 
-Best quality reasoning. Requires Anthropic subscription + Databricks AI Dev Kit.
+Best quality reasoning. Requires an Anthropic subscription; the AI Dev Kit provides the Databricks MCP tools (`get_table_details`, `execute_sql`, `manage_uc_objects`, etc.) that the skill uses.
 
 ```bash
 git clone https://github.com/karshreya98/agentic-databricks-event-log-generator.git
