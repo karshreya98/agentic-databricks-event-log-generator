@@ -157,9 +157,7 @@ Databricks side (creating the share):
 - [Manage recipients](https://docs.databricks.com/en/delta-sharing/create-recipient.html)
 
 Consumer side (connecting the PM tool to the share):
-- Celonis: [Connect to Databricks](https://docs.celonis.com/en/databricks.html)
-- SAP Signavio: [External data sources](https://help.sap.com/docs/signavio)
-- UiPath Process Mining: [Databricks connector](https://docs.uipath.com/process-mining)
+- Celonis: [Delta Sharing connector](https://docs.celonis.com/en/delta-sharing.html)
 
 **[pm4py](https://pm4py.fit.fraunhofer.de/) Databricks App:**
 
