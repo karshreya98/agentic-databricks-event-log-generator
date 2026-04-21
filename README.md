@@ -11,7 +11,7 @@ Your operational data (SAP, Salesforce, ServiceNow) is already in the lakehouse.
 
 - **Unity Catalog metadata** — the agent reads table schemas, column stats, descriptions, and tags to understand your data. No manual profiling.
 - **Enrichment beyond the event log** — supplier risk ratings, contract terms, customer data sit alongside the event log. Process mining tools don't have access to this context. The lakehouse does.
-- **Event log as a governed data product** — not locked in a tool. Enterprise process mining tools (Celonis, SAP Signavio, UiPath) read it via Delta Sharing. The pm4py app visualizes it. ML models train on it. Same table, same governance.
+- **Event log as a governed data product** — not locked in a tool. Celonis reads it directly via Delta Sharing; other enterprise PM tools (SAP Signavio, UiPath) connect through their own Databricks connectors. The pm4py app visualizes it. ML models train on it. Same table, same governance.
 
 This complements enterprise process mining tools — it automates the tedious part (building the event log) so they can do what they're best at (analysis).
 
@@ -43,7 +43,7 @@ The skill teaches the agent **process mining domain knowledge** — table classi
 
 ### Output Formats
 
-**Traditional:** Flat event log with single `case_id`. Ready for any enterprise PM tool (Celonis, SAP Signavio, UiPath), [pm4py](https://pm4py.fit.fraunhofer.de/), or any standard PM tool.
+**Traditional:** Flat event log with single `case_id`. Ready for any enterprise PM tool (Celonis, SAP Signavio, UiPath — each via its own Databricks connector) or [pm4py](https://pm4py.fit.fraunhofer.de/).
 
 **OCEL 2.0:** Three tables (events + objects + event-to-object links). Preserves many-to-many relationships (e.g., one PO → multiple invoices → multiple suppliers). Required for object-centric process mining.
 
@@ -118,14 +118,14 @@ The synthetic data includes:
 
 ## Consuming the Event Log
 
-**Enterprise process mining tools (Delta Sharing)**
+**Celonis (Delta Sharing)**
 
-For Celonis, SAP Signavio, UiPath Process Mining, or any other Delta-Sharing-aware consumer.
+Celonis consumes Databricks event logs directly via Delta Sharing. SAP Signavio and UiPath use their own connectors — see their docs; Delta Sharing doesn't apply there.
 
 Prerequisites:
 - Delta Sharing is enabled on your Unity Catalog metastore (metastore admin)
 - You have `CREATE SHARE` on the metastore and `SELECT` + `USE CATALOG` / `USE SCHEMA` on the event log
-- A Delta Sharing recipient exists for the consumer (Celonis, Signavio, UiPath, or any external partner). Create one with `CREATE RECIPIENT <name>` or via the Catalog Explorer UI
+- A Delta Sharing recipient exists for Celonis. Create one with `CREATE RECIPIENT <name>` or via the Catalog Explorer UI
 - The event log table is stored in a Unity Catalog-managed location (external tables also work, but managed is simpler for sharing)
 
 Share a traditional (single-table) event log:
@@ -161,7 +161,7 @@ Consumer side (connecting the PM tool to the share):
 
 **[pm4py](https://pm4py.fit.fraunhofer.de/) Databricks App:**
 
-> **Scope:** the app is a reference implementation for small-to-medium event logs (≲ 200K events). It runs pm4py in a serverless Databricks App. For production-scale workloads, share the event log to an enterprise process mining tool (Celonis, SAP Signavio, UiPath) via Delta Sharing — those tools are built for it.
+> **Scope:** the app is a reference implementation for small-to-medium event logs (≲ 200K events). It runs pm4py in a serverless Databricks App. For production-scale workloads, plug the event log into an enterprise process mining tool — Celonis via Delta Sharing, or SAP Signavio / UiPath via their own Databricks connectors — those tools are built for it.
 
 **UI-only deploy** (recommended — one notebook does everything):
 
