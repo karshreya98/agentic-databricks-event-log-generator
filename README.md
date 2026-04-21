@@ -118,9 +118,42 @@ The synthetic data includes:
 
 ## Consuming the Event Log
 
+**Databricks App + [pm4py](https://pm4py.fit.fraunhofer.de/) (in-platform)**
+
+The fastest way to get a working process mining dashboard on the event log — a serverless Databricks App running pm4py. No external tool, no data movement, no extra license. Good for small-to-medium logs (≲ 200K events); for production-scale workloads use an enterprise PM tool (see below).
+
+**UI-only deploy** (recommended — one notebook does everything):
+
+1. From the Git folder clone, open [`scripts/deploy_app.py`](scripts/deploy_app.py) in the workspace → attach to serverless
+2. Fill in the widgets (SQL Warehouse ID, catalog, schema, app name) → **Run all**
+
+The notebook writes `app/app.yaml`, creates the app, deploys the source from `app/`, grants the app's service principal access to the catalog / schema / warehouse, and prints the app URL.
+
+**CLI deploy** (alternative):
+
+1. Edit `app/app.yaml` — set `DATABRICKS_WAREHOUSE_ID`, `CATALOG`, `SCHEMA`.
+2. Sync the source to your workspace:
+
+   ```bash
+   databricks sync app /Workspace/Users/<you>@databricks.com/process-mining-dashboard
+   ```
+
+3. Create the app (one-time) and deploy the synced code:
+
+   ```bash
+   databricks apps create process-mining-dashboard
+
+   databricks apps deploy process-mining-dashboard \
+     --source-code-path /Workspace/Users/<you>@databricks.com/process-mining-dashboard
+   ```
+
+4. Grant the app's service principal `USE CATALOG` + `USE SCHEMA` + `SELECT` on the event log schema, and `CAN USE` on the warehouse.
+
+The app auto-discovers all event log tables in the configured catalog/schema. Supports both traditional and OCEL tables — OCEL tables show object type breakdown and links-per-event stats alongside the standard process map.
+
 **Celonis (Delta Sharing)**
 
-Celonis consumes Databricks event logs directly via Delta Sharing. SAP Signavio and UiPath use their own connectors — see their docs; Delta Sharing doesn't apply there.
+For production-scale workloads, Celonis consumes Databricks event logs directly via Delta Sharing. SAP Signavio and UiPath use their own Databricks connectors — see their docs; Delta Sharing doesn't apply there.
 
 Prerequisites:
 - Delta Sharing is enabled on your Unity Catalog metastore (metastore admin)
@@ -156,41 +189,8 @@ Databricks side (creating the share):
 - [Create and manage shares](https://docs.databricks.com/en/delta-sharing/create-share.html)
 - [Manage recipients](https://docs.databricks.com/en/delta-sharing/create-recipient.html)
 
-Consumer side (connecting the PM tool to the share):
+Consumer side:
 - Celonis: [Delta Sharing connector](https://docs.celonis.com/en/delta-sharing.html)
-
-**[pm4py](https://pm4py.fit.fraunhofer.de/) Databricks App:**
-
-> **Scope:** the app is a reference implementation for small-to-medium event logs (≲ 200K events). It runs pm4py in a serverless Databricks App. For production-scale workloads, plug the event log into an enterprise process mining tool — Celonis via Delta Sharing, or SAP Signavio / UiPath via their own Databricks connectors — those tools are built for it.
-
-**UI-only deploy** (recommended — one notebook does everything):
-
-1. From the Git folder clone, open `scripts/deploy_app` → attach to serverless
-2. Fill in the widgets (SQL Warehouse ID, catalog, schema, app name) → **Run all**
-
-The notebook writes `app/app.yaml`, creates the app, deploys the source from `app/`, grants the app's service principal access to the catalog / schema / warehouse, and prints the app URL.
-
-**CLI deploy** (alternative):
-
-1. Edit `app/app.yaml` — set `DATABRICKS_WAREHOUSE_ID`, `CATALOG`, `SCHEMA`.
-2. Sync the source to your workspace:
-
-   ```bash
-   databricks sync app /Workspace/Users/<you>@databricks.com/process-mining-dashboard
-   ```
-
-3. Create the app (one-time) and deploy the synced code:
-
-   ```bash
-   databricks apps create process-mining-dashboard
-
-   databricks apps deploy process-mining-dashboard \
-     --source-code-path /Workspace/Users/<you>@databricks.com/process-mining-dashboard
-   ```
-
-4. Grant the app's service principal `USE CATALOG` + `USE SCHEMA` + `SELECT` on the event log schema, and `CAN USE` on the warehouse.
-
-The app auto-discovers all event log tables in the configured catalog/schema. Supports both traditional and OCEL tables — OCEL tables show object type breakdown and links-per-event stats alongside the standard process map.
 
 ---
 
