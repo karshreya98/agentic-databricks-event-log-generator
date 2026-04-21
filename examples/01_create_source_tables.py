@@ -201,13 +201,22 @@ print(f"  Payments:  {len(payments):,}")
 # MAGIC %md
 # MAGIC ## Add Realistic Noise
 # MAGIC
-# MAGIC Real data is messy. We inject:
+# MAGIC Real data is messy. We inject two kinds of noise:
+# MAGIC
+# MAGIC **Data-quality noise** (affects enrichment / joins, not process flow):
 # MAGIC - **Duplicate events** (3% of GRs posted twice)
 # MAGIC - **Null timestamps** (2% of POs missing approved_at even though status = approved)
 # MAGIC - **Orphan records** (invoices referencing non-existent POs)
 # MAGIC - **Inconsistent supplier IDs** (typos, case differences)
-# MAGIC - **Out-of-order timestamps** (some GRs posted before PO approval)
 # MAGIC - **Missing enrichment keys** (5% of POs have null supplier_id)
+# MAGIC
+# MAGIC **Process-variant noise** (creates traces that deviate from the happy path —
+# MAGIC this is what drives fitness < 100% during conformance checking):
+# MAGIC - **Out-of-order GRs** (6% posted before PO approval)
+# MAGIC - **Invoice-before-GR** (5% of POs are billed before any goods receipt — maverick buying)
+# MAGIC - **Early payment** (3% of payments happen before invoice cleared_date — prepayments)
+# MAGIC - **Rogue POs** (3% of POs have no linking PR — off-contract buying)
+# MAGIC - **PO amendments** (8% of POs are modified after approval — rework loop)
 
 # COMMAND ----------
 
@@ -242,8 +251,8 @@ num_typo = int(len(pos) * 0.01)
 for idx in random.sample(range(len(pos)), num_typo):
     pos[idx]["supplier_id"] = pos[idx]["supplier_id"].lower() + " "
 
-# Out-of-order: 1% of GRs have posting_date BEFORE the PO approval
-num_ooo = int(len(grs) * 0.01)
+# Out-of-order: 6% of GRs have posting_date BEFORE the PO approval
+num_ooo = int(len(grs) * 0.06)
 for idx in random.sample(range(len(grs)), min(num_ooo, len(grs))):
     grs[idx]["posting_date"] = grs[idx]["posting_date"] - timedelta(days=random.randint(5, 30))
 
@@ -252,13 +261,62 @@ num_null_sup = int(len(pos) * 0.05)
 for idx in random.sample(range(len(pos)), num_null_sup):
     pos[idx]["supplier_id"] = None
 
+# Invoice-before-GR: 5% of POs get billed before any goods receipt is posted.
+# Shift every invoice for the PO to before the earliest GR date for that PO.
+po_to_invoices = {}
+for inv in invoices:
+    po_to_invoices.setdefault(inv["po_id"], []).append(inv)
+po_to_grs = {}
+for gr in grs:
+    po_to_grs.setdefault(gr["po_id"], []).append(gr)
+
+po_ids_with_both = [pid for pid in po_to_invoices if pid in po_to_grs]
+num_early_inv = int(len(po_ids_with_both) * 0.05)
+early_inv_po_ids = random.sample(po_ids_with_both, min(num_early_inv, len(po_ids_with_both)))
+for pid in early_inv_po_ids:
+    earliest_gr = min(gr["posting_date"] for gr in po_to_grs[pid])
+    for inv in po_to_invoices[pid]:
+        inv["received_date"] = earliest_gr - timedelta(hours=random.uniform(24, 168))
+        # If the invoice was cleared, slide clear_date earlier too to keep it after receipt
+        if inv["cleared_date"] is not None:
+            inv["cleared_date"] = inv["received_date"] + timedelta(hours=random.uniform(24, 168))
+
+# Early payment: 3% of payments happen BEFORE the invoice cleared_date (prepayments)
+inv_by_id = {inv["invoice_id"]: inv for inv in invoices}
+num_early_pay = int(len(payments) * 0.03)
+for pay in random.sample(payments, min(num_early_pay, len(payments))):
+    inv = inv_by_id.get(pay["invoice_id"])
+    if inv and inv.get("cleared_date"):
+        pay["payment_date"] = inv["cleared_date"] - timedelta(hours=random.uniform(12, 96))
+
+# Rogue POs: 3% of POs have no linking PR (off-contract / emergency buying).
+# These cases will be missing the PR_Created / PR_Approved events upstream.
+num_rogue = int(len(pos) * 0.03)
+for idx in random.sample(range(len(pos)), num_rogue):
+    pos[idx]["pr_id"] = None
+
+# PO amendments: 8% of approved POs get a modified_at timestamp AFTER approval
+# (rework loop — discovery will surface this as a PO_Modified activity).
+for po in pos:
+    po["modified_at"] = None
+num_amended = int(len(pos) * 0.08)
+amend_candidates = [i for i, po in enumerate(pos) if po.get("approved_at") is not None]
+for idx in random.sample(amend_candidates, min(num_amended, len(amend_candidates))):
+    pos[idx]["modified_at"] = pos[idx]["approved_at"] + timedelta(hours=random.uniform(12, 240))
+
 print(f"\nNoise added:")
-print(f"  Duplicate GRs:          {num_dupes}")
-print(f"  Null PO approved_at:    {num_null_ts}")
-print(f"  Orphan invoices:        20")
-print(f"  Supplier ID typos:      {num_typo}")
-print(f"  Out-of-order GRs:       {num_ooo}")
-print(f"  Null supplier_ids:      {num_null_sup}")
+print(f"  Data quality:")
+print(f"    Duplicate GRs:          {num_dupes}")
+print(f"    Null PO approved_at:    {num_null_ts}")
+print(f"    Orphan invoices:        20")
+print(f"    Supplier ID typos:      {num_typo}")
+print(f"    Null supplier_ids:      {num_null_sup}")
+print(f"  Process variants (drive fitness < 100%):")
+print(f"    Out-of-order GRs:       {num_ooo}")
+print(f"    Invoice-before-GR POs:  {len(early_inv_po_ids)}")
+print(f"    Early payments:         {num_early_pay}")
+print(f"    Rogue POs (no PR):      {num_rogue}")
+print(f"    PO amendments:          {num_amended}")
 
 print(f"\nFinal counts:")
 print(f"  PRs:       {len(prs):,}")
@@ -274,11 +332,14 @@ print(f"  Payments:  {len(payments):,}")
 
 # COMMAND ----------
 
-spark.createDataFrame(prs).write.mode("overwrite").saveAsTable(f"{CATALOG}.erp_raw.purchase_requisitions")
-spark.createDataFrame(pos).write.mode("overwrite").saveAsTable(f"{CATALOG}.erp_raw.purchase_orders")
-spark.createDataFrame(grs).write.mode("overwrite").saveAsTable(f"{CATALOG}.erp_raw.goods_receipts")
-spark.createDataFrame(invoices).write.mode("overwrite").saveAsTable(f"{CATALOG}.erp_raw.invoices")
-spark.createDataFrame(payments).write.mode("overwrite").saveAsTable(f"{CATALOG}.erp_raw.payments")
+def _write(df_rows, table):
+    spark.createDataFrame(df_rows).write.mode("overwrite").option("overwriteSchema", "true").saveAsTable(table)
+
+_write(prs,      f"{CATALOG}.erp_raw.purchase_requisitions")
+_write(pos,      f"{CATALOG}.erp_raw.purchase_orders")
+_write(grs,      f"{CATALOG}.erp_raw.goods_receipts")
+_write(invoices, f"{CATALOG}.erp_raw.invoices")
+_write(payments, f"{CATALOG}.erp_raw.payments")
 
 print("Operational tables written.")
 
@@ -314,9 +375,9 @@ cost_centers = [{
     "region": random.choice(["AMER", "EMEA", "APAC", "LATAM"]),
 } for i in range(100, 200)]
 
-spark.createDataFrame(suppliers).write.mode("overwrite").saveAsTable(f"{CATALOG}.reference.supplier_master")
-spark.createDataFrame(contracts).write.mode("overwrite").saveAsTable(f"{CATALOG}.reference.contracts")
-spark.createDataFrame(cost_centers).write.mode("overwrite").saveAsTable(f"{CATALOG}.reference.cost_centers")
+_write(suppliers,    f"{CATALOG}.reference.supplier_master")
+_write(contracts,    f"{CATALOG}.reference.contracts")
+_write(cost_centers, f"{CATALOG}.reference.cost_centers")
 
 print("Reference tables written.")
 

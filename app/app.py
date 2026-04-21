@@ -472,8 +472,10 @@ def update_dashboard(table, perspective):
         right_content = dcc.Graph(figure=duration_fig)
 
     # ── Conformance ──
-    process_tree = pm4py.discover_process_tree_inductive(df)
-    net, im, fm = pm4py.convert_to_petri_net(process_tree)
+    # noise_threshold prunes low-frequency behavior from the discovered model,
+    # so deviant traces (rework, out-of-order, rogue cases) fall out of conformance
+    # instead of being absorbed into the model.
+    net, im, fm = pm4py.discover_petri_net_inductive(df, noise_threshold=0.2)
     fitness = pm4py.fitness_token_based_replay(df, net, im, fm)
     avg_fitness = fitness["average_trace_fitness"]
     pct_fitting = fitness.get("percentage_of_fitting_traces", avg_fitness * 100)
