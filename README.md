@@ -199,31 +199,32 @@ Consumer side:
 ```
 agentic-databricks-event-log-generator/
 │
-├── skills/                             # Agentic skill (single source of truth)
-│   └── discover-event-log/
-│       ├── SKILL.md                    #   4-phase agentic workflow + OCEL support
-│       └── references/                 #   YAML schema + process patterns
+├── skills/discover-event-log/          # Agentic skill — single source of truth
+│   ├── SKILL.md                        #   4-phase workflow (discover → map → build → report)
+│   └── references/
+│       ├── yaml-schema.md              #   Event log YAML schema
+│       └── process-templates.md        #   P2P, O2C, sales pipeline, ITSM templates
 │
-├── .claude/skills/                     # Claude Code auto-detection (symlink → skills/)
+├── .claude/skills/discover-event-log   # Symlink → ../../skills/discover-event-log
+│                                       #   (so Claude Code auto-detects the skill)
 │
 ├── scripts/
-│   ├── setup-claude-code.sh            #   One-command Claude Code setup
-│   ├── install-genie-code.sh           #   One-command Genie Code install (CLI)
+│   ├── setup-claude-code.sh            #   Claude Code setup (local CLI)
+│   ├── install-genie-code.sh           #   Genie Code install (local CLI)
 │   ├── install_skill_genie.py          #   Notebook: install skill into workspace (UI)
-│   └── deploy_app.py                   #   Notebook: create + deploy + grant perms (UI)
+│   └── deploy_app.py                   #   Notebook: create + deploy pm4py app (UI)
 │
 ├── app/                                # pm4py Databricks App
-│   ├── app.py                          #   Multi-table dashboard with OCEL support
-│   ├── app.yaml
+│   ├── app.py                          #   Multi-table dashboard, traditional + OCEL
+│   ├── app.yaml                        #   App config (warehouse, catalog, schema)
 │   └── requirements.txt
 │
 ├── examples/                           # End-to-end walkthrough
-│   ├── 01_create_source_tables.py      #   Synthetic P2P data with noise
-│   ├── 02_run_discovery_claude_code.md
-│   └── 03_run_discovery_genie_code.md
+│   ├── 01_create_source_tables.py      #   Synthetic P2P data + injected noise
+│   ├── 02_run_discovery_claude_code.md #   Run the skill with Claude Code
+│   └── 03_run_discovery_genie_code.md  #   Run the skill with Genie Code
 │
-├── CLAUDE.md
-├── blog.md
+├── CLAUDE.md                           # Repo-level instructions for Claude Code
 └── README.md
 ```
 
